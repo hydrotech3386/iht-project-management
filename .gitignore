@@ -1,0 +1,19 @@
+# local firebase CLI install (large, machine-specific)
+tooling/
+
+# function dependencies — installed at deploy time
+functions/node_modules/
+node_modules/
+
+# firebase local state
+.firebase/
+*-debug.log
+firebase-debug.log
+ui-debug.log
+database-debug.log
+
+# never commit secrets
+.env
+.env.*
+*.key
+serviceAccount*.json

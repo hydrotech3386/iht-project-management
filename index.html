@@ -1,0 +1,1029 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="theme-color" content="#16213e">
+<title>Project Management — Hydrotech</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:'Segoe UI',sans-serif;background:#1a1a2e;color:#e0e0e0;min-height:100vh}
+
+/* ---------- App shell ---------- */
+.app-shell{display:flex;min-height:100vh}
+.sidebar{width:230px;flex-shrink:0;background:#16213e;border-right:2px solid #0f3460;display:flex;flex-direction:column;padding:18px 14px;padding-top:max(18px,calc(env(safe-area-inset-top) + 10px))}
+.logo{font-size:16px;font-weight:800;color:#e94560;margin-bottom:2px;white-space:nowrap}
+.logo-sub{font-size:11px;color:#7a8bb0;margin-bottom:22px}
+.sidebar-nav{display:flex;flex-direction:column;gap:2px}
+.nav-item{display:flex;align-items:center;gap:10px;padding:9px 12px;border-radius:8px;font-size:13px;font-weight:600;color:#aab4cc;cursor:pointer;user-select:none}
+.nav-item.active{background:#e94560;color:#fff}
+.nav-item:hover:not(.active){background:#0f3460;color:#fff}
+.nav-ico{width:18px;text-align:center;font-size:15px}
+.sidebar-foot{margin-top:auto;padding-top:14px;border-top:1px solid #0f3460;display:flex;flex-direction:column;gap:10px}
+.sync-status{display:flex;align-items:center;gap:6px;font-size:11px;color:#7a8bb0}
+.sync-dot{width:8px;height:8px;border-radius:50%;background:#555}
+.sync-dot.online{background:#27ae60}
+.sync-dot.syncing{background:#d35400;animation:pulse 1s infinite}
+.sync-dot.offline{background:#e94560}
+.sync-dot.local{background:#f5b041}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:.3}}
+.user-info{display:none;align-items:center;gap:8px}
+.user-info.show{display:flex}
+.user-info .avatar{width:30px;height:30px;border-radius:50%;background:#e94560;color:#fff;display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:800;flex-shrink:0}
+.user-info b{color:#fff;font-size:12px;display:block}
+.role-tag{background:#0f3460;padding:2px 7px;border-radius:10px;font-size:9px;text-transform:uppercase;color:#5dfc8d}
+.btn-logout{background:#0f3460;border:none;color:#aab4cc;padding:7px 10px;border-radius:6px;cursor:pointer;font-size:11px;font-weight:600}
+.btn-logout:hover{background:#e94560;color:#fff}
+
+.main-content{flex:1;min-width:0;display:flex;flex-direction:column}
+.topbar{background:#16213e;border-bottom:2px solid #0f3460;padding:16px 26px;padding-top:max(16px,calc(env(safe-area-inset-top) + 10px));display:flex;align-items:center;gap:14px}
+.topbar h1{font-size:19px;color:#fff;font-weight:800}
+.view-body{padding:22px 26px;flex:1}
+.view{display:none}
+.view.active{display:block}
+.hamburger-btn{display:none;background:none;border:none;color:#fff;font-size:22px;cursor:pointer;padding:2px 4px;line-height:1}
+.sidebar-backdrop{display:none;position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:299}
+.sidebar-backdrop.open{display:block}
+
+@media (max-width:820px){
+  .hamburger-btn{display:block}
+  .sidebar{position:fixed;top:0;left:0;bottom:0;width:250px;max-width:82vw;z-index:300;transform:translateX(-100%);transition:transform .25s;box-shadow:2px 0 16px rgba(0,0,0,.5)}
+  .sidebar.open{transform:translateX(0)}
+  .view-body{padding:16px}
+}
+
+/* ---------- Local-mode banner ---------- */
+.local-banner{background:#5c3a10;color:#f5b041;font-size:12px;padding:6px 26px;text-align:center;font-weight:600}
+.local-banner a{color:#ffd28a}
+
+/* ---------- Toolbar ---------- */
+.toolbar{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:16px;align-items:center}
+.toolbar select,.toolbar input[type=text],.toolbar input[type=search]{background:#0f3460;border:1px solid #333;color:#fff;border-radius:6px;padding:7px 10px;font-size:13px}
+.toolbar label{font-size:12px;color:#aab4cc;display:flex;align-items:center;gap:6px}
+button.btn{padding:8px 16px;border:none;border-radius:6px;cursor:pointer;font-size:13px;font-weight:600}
+.btn-add{background:#27ae60;color:#fff}
+.btn-add:hover{background:#1e8449}
+.btn-primary{background:#2980b9;color:#fff}
+.btn-primary:hover{background:#1a6fa8}
+.btn-danger{background:#c0392b;color:#fff}
+.btn-danger:hover{background:#922b21}
+.btn-secondary{background:#555;color:#fff}
+.btn-secondary:hover{background:#444}
+.btn-ai{background:#7b4bd1;color:#fff}
+.btn-ai:hover{background:#673ab7}
+.btn-sm{padding:5px 10px;font-size:12px}
+.spacer{margin-left:auto}
+
+/* ---------- Stat tiles ---------- */
+.stat-row{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:20px}
+.stat-card{background:#16213e;border:1px solid #0f3460;border-radius:12px;padding:14px 16px}
+.stat-card .num{font-size:22px;font-weight:800;color:#fff}
+.stat-card .lbl{font-size:11px;color:#7a8bb0;margin-top:2px}
+.stat-card.alert .num{color:#e94560}
+.stat-card.good .num{color:#5dfc8d}
+.stat-card.money .num{color:#4fc3f7}
+@media (max-width:640px){.stat-row{grid-template-columns:repeat(2,1fr)}}
+
+/* ---------- Panels ---------- */
+.panel{background:#16213e;border:1px solid #0f3460;border-radius:12px;padding:16px 18px;margin-bottom:16px}
+.panel h3{font-size:14px;color:#fff;margin-bottom:12px;font-weight:700}
+.dash-grid{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+@media (max-width:820px){.dash-grid{grid-template-columns:1fr}}
+.list-row{display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid #0f3460;font-size:13px}
+.list-row:last-child{border-bottom:none}
+.list-row .grow{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.list-row .muted{color:#7a8bb0;font-size:11px}
+.pill{font-size:10px;font-weight:700;padding:2px 8px;border-radius:10px;white-space:nowrap}
+.pill.overdue{background:#5c1a2e;color:#ff8fa3}
+.mini-bar{display:block;background:#0f3460;border-radius:5px;height:7px;overflow:hidden;width:90px;flex-shrink:0}
+.mini-fill{display:block;height:100%;background:#27ae60}
+
+/* ---------- Project cards ---------- */
+.project-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:14px}
+.project-card{background:#16213e;border:1px solid #0f3460;border-radius:10px;padding:16px;cursor:pointer;transition:border-color .15s}
+.project-card:hover{border-color:#e94560}
+.pc-top{display:flex;justify-content:space-between;align-items:flex-start;gap:8px;margin-bottom:8px}
+.pc-name{font-size:15px;font-weight:700;color:#fff}
+.pc-site{font-size:12px;color:#aaa;margin-top:2px}
+.status-badge{font-size:10px;font-weight:700;text-transform:uppercase;padding:3px 8px;border-radius:10px;white-space:nowrap}
+.status-planning{background:#4a4a5e;color:#ccc}
+.status-in-progress{background:#1a4a6e;color:#4fc3f7}
+.status-delayed{background:#5c1a2e;color:#ff8fa3}
+.status-completed{background:#1e4a2e;color:#5dfc8d}
+.status-on-hold{background:#5c3a10;color:#f5b041}
+.pc-dates{font-size:11px;color:#888;margin:8px 0 4px}
+.pc-progress-bar{background:#0f3460;border-radius:6px;height:8px;overflow:hidden;margin:6px 0}
+.pc-progress-fill{height:100%;background:#27ae60;transition:width .3s}
+.pc-progress-label{font-size:11px;color:#aaa;display:flex;justify-content:space-between}
+.pc-meta{display:flex;flex-wrap:wrap;gap:6px;margin-top:10px;font-size:11px;color:#7a8bb0}
+.pc-meta .chip{background:#0f3460;padding:3px 8px;border-radius:8px}
+.empty-state{color:#555;text-align:center;padding:60px 0;font-size:14px}
+
+/* ---------- Items table ---------- */
+.item-table{width:100%;border-collapse:collapse;font-size:13px}
+.item-table th{text-align:left;color:#7a8bb0;font-size:11px;text-transform:uppercase;padding:8px;border-bottom:1px solid #0f3460;font-weight:700}
+.item-table td{padding:8px;border-bottom:1px solid #0f3460;color:#e0e0e0;vertical-align:middle}
+.item-table tr:hover td{background:#141b30}
+.item-table .amt{text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap}
+.item-table .num-col{text-align:right;font-variant-numeric:tabular-nums}
+.item-desc{color:#fff}
+.item-sec{color:#4fc3f7;font-weight:700;font-size:11px;text-transform:uppercase;background:#131c33}
+.pct-cell{display:flex;align-items:center;gap:8px;min-width:150px}
+.pct-input{width:56px;background:#0f3460;border:1px solid #23325a;color:#fff;border-radius:6px;padding:5px 6px;font-size:13px;text-align:right}
+.pct-bar{flex:1;display:block;background:#0f3460;border-radius:5px;height:8px;overflow:hidden;min-width:50px}
+.pct-fill{display:block;height:100%;background:#f5b041}
+.pct-fill.done{background:#27ae60}
+.progress-big{background:#0f3460;border-radius:8px;height:14px;overflow:hidden}
+.progress-big .pf{height:100%;background:#27ae60;transition:width .3s}
+
+/* ---------- Documents ---------- */
+.doc-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:12px}
+.doc-card{background:#16213e;border:1px solid #0f3460;border-radius:10px;padding:14px;display:flex;flex-direction:column;gap:6px}
+.doc-card.source{border-color:#7b4bd1}
+.doc-icon{font-size:26px}
+.doc-name{font-size:13px;color:#fff;font-weight:600;word-break:break-word}
+.doc-meta{font-size:11px;color:#7a8bb0}
+.doc-badge{font-size:9px;font-weight:700;color:#c9b3f2;background:#2e2150;padding:2px 6px;border-radius:8px;align-self:flex-start;text-transform:uppercase}
+.doc-actions{display:flex;gap:6px;margin-top:6px;flex-wrap:wrap}
+.dropzone{border:2px dashed #0f3460;border-radius:12px;padding:22px;text-align:center;color:#7a8bb0;cursor:pointer;margin-bottom:16px;font-size:13px}
+.dropzone.drag-over{border-color:#e94560;color:#e94560;background:#1a2440}
+
+/* ---------- Modal ---------- */
+.modal-backdrop{display:none;position:fixed;inset:0;background:rgba(0,0,0,.7);z-index:400;align-items:flex-start;justify-content:center;overflow-y:auto;padding:30px 14px}
+.modal-backdrop.open{display:flex}
+.modal{background:#16213e;border:1px solid #0f3460;border-radius:14px;width:100%;max-width:640px;padding:22px 24px;margin:auto}
+.modal.wide{max-width:960px}
+.modal-head{display:flex;align-items:flex-start;justify-content:space-between;gap:12px;margin-bottom:16px}
+.modal-head h2{font-size:18px;color:#fff}
+.modal-head .sub{font-size:12px;color:#7a8bb0;margin-top:2px}
+.modal-close{background:none;border:none;color:#7a8bb0;font-size:24px;cursor:pointer;line-height:1}
+.modal-close:hover{color:#e94560}
+.form-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+.field{margin-bottom:12px}
+.field.full{grid-column:1/-1}
+.field label{display:block;font-size:11px;color:#7a8bb0;margin-bottom:5px;text-transform:uppercase;font-weight:700}
+.field input,.field select,.field textarea{width:100%;background:#0f3460;border:1px solid #23325a;color:#fff;border-radius:7px;padding:9px 11px;font-size:13px;font-family:inherit}
+.field textarea{resize:vertical;min-height:70px}
+.field .range{display:flex;align-items:center;gap:10px}
+.field .range input[type=range]{flex:1}
+.field .range .val{min-width:44px;text-align:right;font-weight:700;color:#fff}
+.field .hint{font-size:11px;color:#7a8bb0;margin-top:4px;text-transform:none;font-weight:400}
+.file-drop{border:2px dashed #23325a;border-radius:9px;padding:16px;text-align:center;color:#7a8bb0;cursor:pointer;font-size:12px}
+.file-drop.has-file{border-color:#7b4bd1;color:#c9b3f2}
+.modal-foot{display:flex;gap:10px;justify-content:flex-end;margin-top:8px;flex-wrap:wrap}
+
+/* ---------- Detail tabs ---------- */
+.detail-tabs{display:flex;gap:4px;border-bottom:1px solid #0f3460;margin-bottom:16px;flex-wrap:wrap}
+.detail-tab{padding:8px 14px;font-size:13px;font-weight:600;color:#aab4cc;cursor:pointer;border-bottom:2px solid transparent}
+.detail-tab.active{color:#fff;border-bottom-color:#e94560}
+.mini-toolbar{display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;gap:8px;flex-wrap:wrap}
+
+/* milestones */
+.milestone{display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid #0f3460;font-size:13px}
+.milestone:last-child{border-bottom:none}
+.milestone input[type=checkbox]{width:16px;height:16px;accent-color:#27ae60}
+.milestone .m-name{flex:1}
+.milestone.done .m-name{text-decoration:line-through;color:#7a8bb0}
+
+/* extract preview */
+.extract-note{background:#231a3a;border:1px solid #3a2a5a;border-radius:9px;padding:10px 12px;font-size:12px;color:#c9b3f2;margin-bottom:12px}
+
+/* ---------- Login ---------- */
+.login-wrap{display:none;position:fixed;inset:0;background:#1a1a2e;z-index:500;align-items:center;justify-content:center;padding:20px}
+.login-wrap.show{display:flex}
+.login-box{background:#16213e;border:1px solid #0f3460;border-radius:16px;padding:34px 30px;width:100%;max-width:360px;text-align:center}
+.login-box .logo{font-size:22px;margin-bottom:4px}
+.login-box .logo-sub{margin-bottom:24px}
+.login-box input{width:100%;background:#0f3460;border:1px solid #23325a;color:#fff;border-radius:8px;padding:11px 13px;font-size:14px;margin-bottom:12px}
+.login-box button{width:100%;background:#e94560;border:none;color:#fff;padding:12px;border-radius:8px;font-size:14px;font-weight:700;cursor:pointer}
+.login-box button:hover{background:#c1354d}
+.login-err{color:#ff8fa3;font-size:12px;min-height:16px;margin-top:8px}
+
+.toast{position:fixed;bottom:22px;left:50%;transform:translateX(-50%);background:#0f3460;color:#fff;padding:11px 20px;border-radius:10px;font-size:13px;z-index:600;box-shadow:0 6px 20px rgba(0,0,0,.5);opacity:0;transition:opacity .2s;pointer-events:none;max-width:90vw;text-align:center}
+.toast.show{opacity:1}
+.toast.err{background:#c0392b}
+.toast.ok{background:#1e8449}
+
+.spin{display:inline-block;width:14px;height:14px;border:2px solid #c9b3f2;border-top-color:transparent;border-radius:50%;animation:rot .7s linear infinite;vertical-align:middle}
+@keyframes rot{to{transform:rotate(360deg)}}
+
+.readonly .btn-add,.readonly .btn-danger,.readonly .btn-ai,.readonly .edit-only{display:none!important}
+.readonly .pct-input{pointer-events:none;opacity:.7}
+</style>
+</head>
+<body>
+
+<!-- ============ LOGIN ============ -->
+<div class="login-wrap" id="loginWrap">
+  <div class="login-box">
+    <div class="logo">Hydrotech</div>
+    <div class="logo-sub">Project Management</div>
+    <input type="email" id="loginEmail" placeholder="Email" autocomplete="username">
+    <input type="password" id="loginPass" placeholder="Password" autocomplete="current-password">
+    <button id="loginBtn">Sign In</button>
+    <div class="login-err" id="loginErr"></div>
+  </div>
+</div>
+
+<!-- ============ APP ============ -->
+<div class="app-shell" id="appShell" style="display:none">
+  <div class="sidebar-backdrop" id="sidebarBackdrop"></div>
+  <aside class="sidebar" id="sidebar">
+    <div class="logo">Hydrotech</div>
+    <div class="logo-sub">Project Management</div>
+    <nav class="sidebar-nav" id="navMenu">
+      <div class="nav-item active" data-view="dashboard"><span class="nav-ico">▣</span> Dashboard</div>
+      <div class="nav-item" data-view="projects"><span class="nav-ico">◈</span> Projects</div>
+      <div class="nav-item" data-view="items"><span class="nav-ico">☑</span> Items</div>
+      <div class="nav-item" data-view="documents"><span class="nav-ico">▤</span> Documents</div>
+      <div class="nav-item admin-only" data-view="users" style="display:none"><span class="nav-ico">⚙</span> Users</div>
+    </nav>
+    <div class="sidebar-foot">
+      <div class="user-info" id="userInfo">
+        <div class="avatar" id="userAvatar">?</div>
+        <div style="flex:1;min-width:0">
+          <b id="userName">—</b>
+          <span class="role-tag" id="userRole">view</span>
+        </div>
+        <button class="btn-logout" id="logoutBtn">Exit</button>
+      </div>
+      <div class="sync-status"><span class="sync-dot" id="syncDot"></span> <span id="syncText">Connecting…</span></div>
+    </div>
+  </aside>
+
+  <main class="main-content">
+    <div class="topbar">
+      <button class="hamburger-btn" id="hamburgerBtn">☰</button>
+      <h1 id="viewTitle">Dashboard</h1>
+    </div>
+    <div class="local-banner" id="localBanner" style="display:none"></div>
+    <div class="view-body">
+      <div class="view active" id="view-dashboard"></div>
+      <div class="view" id="view-projects"></div>
+      <div class="view" id="view-items"></div>
+      <div class="view" id="view-documents"></div>
+      <div class="view" id="view-users"></div>
+    </div>
+  </main>
+</div>
+
+<div class="modal-backdrop" id="modalBackdrop"><div class="modal" id="modalBox"></div></div>
+<div class="toast" id="toast"></div>
+
+<!-- Firebase config -->
+<script>
+/* =====================================================================
+   CONFIG — fill FB_CONFIG to enable cloud sync + login + AI extraction.
+   Until then the app runs in LOCAL MODE (localStorage, no login).
+   ===================================================================== */
+var FB_CONFIG = {
+  apiKey: "AIzaSyA1JmQRqaBE3qPNAh1l6zFyQdgYlo0N19c",
+  authDomain: "iht-project-schedule.firebaseapp.com",
+  databaseURL: "https://iht-project-schedule-default-rtdb.asia-southeast1.firebasedatabase.app",
+  projectId: "iht-project-schedule",
+  storageBucket: "iht-project-schedule.firebasestorage.app",
+  messagingSenderId: "927981622689",
+  appId: "1:927981622689:web:8955bab23c76489e42e7e0"
+};
+/* This app shares the iht-project-schedule Firebase project with the Project
+   Schedule app, so ALL of its data lives under the pm/ namespace to keep the
+   two completely separate. Never write outside pm/. */
+var DB_PREFIX  = "pm/";
+var FB_REGION  = "asia-southeast1";               // Cloud Functions region
+var EXTRACT_FN = "extractItems";                  // callable function name
+var FB_ENABLED = !!(FB_CONFIG.apiKey && FB_CONFIG.databaseURL);
+</script>
+<script>
+if (FB_ENABLED) {
+  document.write('<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"><\/script>');
+  document.write('<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-auth-compat.js"><\/script>');
+  document.write('<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-database-compat.js"><\/script>');
+  document.write('<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-storage-compat.js"><\/script>');
+  document.write('<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-functions-compat.js"><\/script>');
+}
+</script>
+
+<script>
+/* =====================================================================
+   APP
+   ===================================================================== */
+(function(){
+'use strict';
+
+var VIEW_ONLY = new URLSearchParams(location.search).has('view');
+var LS_KEY = 'iht_pm_v2';
+var COLS = ['projects','items','documents','users'];
+
+var state = { projects:{}, items:{}, documents:{}, users:{} };
+var currentUser = null;
+var db = null, storage = null, auth = null, functions = null;
+
+function uid(){ return Date.now().toString(36) + Math.random().toString(36).slice(2,7); }
+function esc(s){ return (s==null?'':String(s)).replace(/[&<>"']/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c];}); }
+function todayISO(){ return new Date().toISOString().slice(0,10); }
+function fmtDate(d){ if(!d) return '—'; var p=String(d).split('-'); return p.length===3? p[2]+'/'+p[1]+'/'+p[0].slice(2) : d; }
+function fmtRM(n){ n=Number(n)||0; return 'RM ' + n.toLocaleString('en-MY',{minimumFractionDigits:0,maximumFractionDigits:2}); }
+function fmtNum(n){ n=Number(n)||0; return n.toLocaleString('en-MY',{maximumFractionDigits:2}); }
+function daysUntil(d){ if(!d) return null; return Math.round((new Date(d) - new Date(todayISO()))/86400000); }
+function canEdit(){ return !VIEW_ONLY && currentUser && (currentUser.role==='admin' || currentUser.role==='editor'); }
+function isAdmin(){ return !VIEW_ONLY && currentUser && currentUser.role==='admin'; }
+
+var toastEl = document.getElementById('toast'), toastTimer;
+function toast(msg, kind, sticky){
+  toastEl.innerHTML = msg; toastEl.className = 'toast show' + (kind?(' '+kind):'');
+  clearTimeout(toastTimer);
+  if(!sticky) toastTimer = setTimeout(function(){ toastEl.className='toast'; }, 2800);
+}
+function clearToast(){ clearTimeout(toastTimer); toastEl.className='toast'; }
+
+/* ---------- data layer ---------- */
+function loadLocal(){
+  try { var raw = localStorage.getItem(LS_KEY); if(raw){ var d=JSON.parse(raw); COLS.forEach(function(c){ state[c]=d[c]||{}; }); } } catch(e){}
+}
+function saveLocal(){ try { localStorage.setItem(LS_KEY, JSON.stringify(state)); } catch(e){} }
+function put(col, obj){
+  if(!obj.id) obj.id = uid();
+  state[col][obj.id] = obj;
+  if(FB_ENABLED && db){ db.ref(DB_PREFIX+col+'/'+obj.id).set(obj); } else saveLocal();
+  return obj;
+}
+function remove(col, id){
+  delete state[col][id];
+  if(FB_ENABLED && db){ db.ref(DB_PREFIX+col+'/'+id).remove(); } else saveLocal();
+}
+function subscribeFirebase(){
+  COLS.forEach(function(col){
+    // pm/users needs auth; ?view mode never signs in, so skip it there
+    if(col==='users' && VIEW_ONLY) return;
+    db.ref(DB_PREFIX+col).on('value', function(snap){ state[col]=snap.val()||{}; renderCurrent(); },
+      function(err){ console.warn('read failed for '+col, err.code); });
+  });
+}
+
+/* ---------- navigation ---------- */
+var currentView = 'dashboard';
+var VIEW_TITLES = { dashboard:'Dashboard', projects:'Projects', items:'Items', documents:'Documents', users:'Users' };
+function switchView(v){
+  currentView=v;
+  document.querySelectorAll('.nav-item').forEach(function(n){ n.classList.toggle('active', n.dataset.view===v); });
+  document.querySelectorAll('.view').forEach(function(el){ el.classList.toggle('active', el.id==='view-'+v); });
+  document.getElementById('viewTitle').textContent = VIEW_TITLES[v]||v;
+  closeSidebar(); renderCurrent();
+}
+function renderCurrent(){
+  var r = { dashboard:renderDashboard, projects:renderProjects, items:renderItemsView, documents:renderDocuments, users:renderUsers }[currentView];
+  if(r) r();
+}
+document.getElementById('navMenu').addEventListener('click', function(e){ var i=e.target.closest('.nav-item'); if(i) switchView(i.dataset.view); });
+function openSidebar(){ document.getElementById('sidebar').classList.add('open'); document.getElementById('sidebarBackdrop').classList.add('open'); }
+function closeSidebar(){ document.getElementById('sidebar').classList.remove('open'); document.getElementById('sidebarBackdrop').classList.remove('open'); }
+document.getElementById('hamburgerBtn').addEventListener('click', openSidebar);
+document.getElementById('sidebarBackdrop').addEventListener('click', closeSidebar);
+
+/* ---------- modal ---------- */
+var modalBackdrop=document.getElementById('modalBackdrop'), modalBox=document.getElementById('modalBox');
+function openModal(html, wide){ modalBox.className='modal'+(wide?' wide':''); modalBox.innerHTML=html; modalBackdrop.classList.add('open'); }
+function closeModal(){ modalBackdrop.classList.remove('open'); modalBox.innerHTML=''; }
+modalBackdrop.addEventListener('click', function(e){ if(e.target===modalBackdrop) closeModal(); });
+document.addEventListener('keydown', function(e){ if(e.key==='Escape') closeModal(); });
+
+/* ---------- derived ---------- */
+function projectItems(pid){ return Object.values(state.items).filter(function(t){ return t.projectId===pid; })
+  .sort(function(a,b){ return (a.order||0)-(b.order||0); }); }
+function projectDocs(pid){ return Object.values(state.documents).filter(function(d){ return d.projectId===pid; }); }
+function itemWeight(it){ var a=Number(it.amount)||0; if(a>0) return a; var q=Number(it.qty)||0; if(q>0) return q; return 1; }
+function contractValue(pid){ return projectItems(pid).reduce(function(s,it){ return s+(Number(it.amount)||0); }, 0); }
+function projectProgress(p){
+  if(p.progressMode==='manual') return Number(p.progress)||0;
+  var its=projectItems(p.id); if(!its.length) return Number(p.progress)||0;
+  var ws=0, ps=0; its.forEach(function(it){ var w=itemWeight(it); ws+=w; ps+=w*(Number(it.percent)||0); });
+  return ws? Math.round(ps/ws) : 0;
+}
+function statusClass(s){ return 'status-'+(s||'planning').replace(/\s+/g,'-'); }
+function statusLabel(s){ return (s||'planning').replace(/-/g,' ').replace(/\b\w/g,function(c){return c.toUpperCase();}); }
+function projName(pid){ var p=state.projects[pid]; return p?p.name:'—'; }
+function sortedProjects(){
+  var order={'in-progress':0,'delayed':1,'planning':2,'on-hold':3,'completed':4};
+  return Object.values(state.projects).sort(function(a,b){
+    var d=(order[a.status]==null?9:order[a.status])-(order[b.status]==null?9:order[b.status]); if(d) return d;
+    return (a.name||'').localeCompare(b.name||'');
+  });
+}
+
+/* =====================================================================
+   DASHBOARD
+   ===================================================================== */
+function renderDashboard(){
+  var el=document.getElementById('view-dashboard');
+  var projs=Object.values(state.projects);
+  var active=projs.filter(function(p){ return p.status!=='completed'; });
+  var delayed=projs.filter(function(p){ return p.status==='delayed'; });
+  var overdue=active.filter(function(p){ return p.endDate && daysUntil(p.endDate)<0; });
+  var allItems=Object.values(state.items);
+  var openItems=allItems.filter(function(it){ return (Number(it.percent)||0)<100; });
+  var avg = active.length ? Math.round(active.reduce(function(s,p){ return s+projectProgress(p); },0)/active.length) : 0;
+
+  var deadlineProjs=active.filter(function(p){ return p.endDate; })
+    .sort(function(a,b){ return new Date(a.endDate)-new Date(b.endDate); }).slice(0,6);
+  var progressProjs=active.slice().sort(function(a,b){ return projectProgress(a)-projectProgress(b); }).slice(0,7);
+
+  el.innerHTML =
+    '<div class="stat-row">' +
+      statCard(active.length,'Active Projects') +
+      statCard(overdue.length,'Overdue', overdue.length?'alert':'') +
+      statCard(avg+'%','Avg Completion','good') +
+      statCard(openItems.length,'Open Items') +
+    '</div>' +
+    '<div class="dash-grid">' +
+      '<div class="panel"><h3>Upcoming Deadlines</h3>' +
+        (deadlineProjs.length? deadlineProjs.map(function(p){
+          var d=daysUntil(p.endDate);
+          var tag=d<0?'<span class="pill overdue">'+Math.abs(d)+'d late</span>':'<span class="muted">'+(d===0?'today':d+'d left')+'</span>';
+          return '<div class="list-row" data-open-proj="'+p.id+'" style="cursor:pointer">'+
+            '<span class="status-badge '+statusClass(p.status)+'">'+statusLabel(p.status)+'</span>'+
+            '<span class="grow">'+esc(p.name)+'</span>'+tag+'</div>';
+        }).join('') : '<div class="empty-state" style="padding:20px 0">No deadlines set</div>') +
+      '</div>' +
+      '<div class="panel"><h3>Project Progress</h3>' +
+        (progressProjs.length? progressProjs.map(function(p){
+          var prog=projectProgress(p);
+          return '<div class="list-row" data-open-proj="'+p.id+'" style="cursor:pointer">'+
+            '<span class="grow">'+esc(p.name)+'</span>'+
+            '<span class="mini-bar"><span class="mini-fill" style="width:'+prog+'%"></span></span>'+
+            '<span class="muted" style="min-width:34px;text-align:right">'+prog+'%</span></div>';
+        }).join('') : '<div class="empty-state" style="padding:20px 0">No active projects</div>') +
+      '</div>' +
+    '</div>';
+  el.querySelectorAll('[data-open-proj]').forEach(function(r){
+    r.addEventListener('click', function(){ switchView('projects'); setTimeout(function(){ openProjectDetail(r.dataset.openProj); },30); });
+  });
+}
+function statCard(num,lbl,cls){ return '<div class="stat-card '+(cls||'')+'"><div class="num">'+num+'</div><div class="lbl">'+lbl+'</div></div>'; }
+
+/* =====================================================================
+   PROJECTS
+   ===================================================================== */
+var projFilter='all';
+function renderProjects(){
+  var el=document.getElementById('view-projects');
+  el.innerHTML =
+    '<div class="toolbar">' +
+      '<select id="projFilterSel">' + ['all','planning','in-progress','delayed','on-hold','completed'].map(function(s){
+        return '<option value="'+s+'"'+(projFilter===s?' selected':'')+'>'+(s==='all'?'All statuses':statusLabel(s))+'</option>'; }).join('') + '</select>' +
+      '<input type="search" id="projSearch" placeholder="Search projects…">' +
+      '<button class="btn btn-add spacer edit-only" id="addProjBtn">+ New Project</button>' +
+    '</div>' +
+    '<div class="project-grid" id="projGrid"></div>';
+  document.getElementById('projFilterSel').addEventListener('change', function(){ projFilter=this.value; renderProjectGrid(); });
+  document.getElementById('projSearch').addEventListener('input', renderProjectGrid);
+  var ab=document.getElementById('addProjBtn'); if(ab) ab.addEventListener('click', function(){ openProjectForm(); });
+  renderProjectGrid();
+}
+function renderProjectGrid(){
+  var grid=document.getElementById('projGrid'); if(!grid) return;
+  var q=((document.getElementById('projSearch')||{}).value||'').toLowerCase();
+  var list=sortedProjects().filter(function(p){
+    if(projFilter!=='all' && p.status!==projFilter) return false;
+    if(q && !((p.name||'')+' '+(p.client||'')+' '+(p.site||'')).toLowerCase().includes(q)) return false;
+    return true;
+  });
+  if(!list.length){ grid.innerHTML='<div class="empty-state">No projects yet. Click “+ New Project” to add one.</div>'; return; }
+  grid.innerHTML=list.map(function(p){
+    var prog=projectProgress(p); var its=projectItems(p.id);
+    var done=its.filter(function(t){ return (Number(t.percent)||0)>=100; }).length;
+    var cv=contractValue(p.id);
+    return '<div class="project-card" data-id="'+p.id+'">'+
+      '<div class="pc-top"><div><div class="pc-name">'+esc(p.name)+'</div>'+
+        (p.client||p.site?'<div class="pc-site">'+esc([p.client,p.site].filter(Boolean).join(' • '))+'</div>':'')+
+      '</div><span class="status-badge '+statusClass(p.status)+'">'+statusLabel(p.status)+'</span></div>'+
+      (p.startDate||p.endDate?'<div class="pc-dates">'+fmtDate(p.startDate)+' → '+fmtDate(p.endDate)+'</div>':'')+
+      '<div class="pc-progress-bar"><div class="pc-progress-fill" style="width:'+prog+'%"></div></div>'+
+      '<div class="pc-progress-label"><span>'+prog+'% complete</span><span>'+done+'/'+its.length+' items</span></div>'+
+      '<div class="pc-meta">'+
+        (its.length?'<span class="chip">☑ '+its.length+' items</span>':'<span class="chip">no items yet</span>')+
+        (cv?'<span class="chip">'+fmtRM(cv)+'</span>':'')+
+        (projectDocs(p.id).length?'<span class="chip">▤ '+projectDocs(p.id).length+'</span>':'')+
+      '</div></div>';
+  }).join('');
+  grid.querySelectorAll('.project-card').forEach(function(c){ c.addEventListener('click', function(){ openProjectDetail(c.dataset.id); }); });
+}
+
+function openProjectForm(p){
+  p=p||{}; var isNew=!p.id; var pendingFile=null;
+  openModal(
+    '<div class="modal-head"><div><h2>'+(isNew?'New Project':'Edit Project')+'</h2>'+
+      (isNew?'<div class="sub">Upload the customer PO / BQ / Quotation — items can be auto-extracted after.</div>':'')+
+    '</div><button class="modal-close" data-close>&times;</button></div>'+
+    '<div class="form-grid">'+
+      field('Project Name','pfName',p.name,'text',true,true)+
+      selField('Status','pfStatus',['planning','in-progress','delayed','on-hold','completed'],p.status||'planning')+
+      field('Client','pfClient',p.client)+
+      field('Site / Location','pfSite',p.site)+
+      field('Start Date','pfStart',p.startDate,'date')+
+      field('End Date','pfEnd',p.endDate,'date')+
+      selField('Progress Mode','pfMode',[['auto','Auto (weighted from items)'],['manual','Manual %']],p.progressMode||'auto')+
+      '<div class="field" id="manualProgWrap" style="'+((p.progressMode==='manual')?'':'display:none')+'">'+
+        '<label>Manual Progress</label><div class="range"><input type="range" id="pfProgress" min="0" max="100" value="'+(Number(p.progress)||0)+'"><span class="val" id="pfProgVal">'+(Number(p.progress)||0)+'%</span></div></div>'+
+      (isNew? '<div class="field full"><label>Source Document (PO / BQ / Quotation)</label>'+
+        '<div class="file-drop" id="pfDocDrop">Click to choose a PDF or image<input type="file" id="pfDocInput" accept=".pdf,image/*" style="display:none"></div>'+
+        '<div class="hint">Optional. After creating, use “Extract items with AI” to auto-list the scope items.</div></div>' : '')+
+      '<div class="field full"><label>Notes</label><textarea id="pfNotes">'+esc(p.notes||'')+'</textarea></div>'+
+    '</div>'+
+    '<div class="modal-foot">'+
+      (isNew?'':'<button class="btn btn-danger" data-del>Delete</button>')+
+      '<button class="btn btn-secondary" data-close>Cancel</button>'+
+      '<button class="btn btn-primary" id="saveProjBtn">'+(isNew?'Create':'Save')+'</button>'+
+    '</div>'
+  );
+  bindClose();
+  var modeSel=document.getElementById('pfMode'), wrap=document.getElementById('manualProgWrap');
+  modeSel.addEventListener('change', function(){ wrap.style.display=this.value==='manual'?'block':'none'; });
+  var rng=document.getElementById('pfProgress'); if(rng) rng.addEventListener('input', function(){ document.getElementById('pfProgVal').textContent=this.value+'%'; });
+  if(isNew){
+    var drop=document.getElementById('pfDocDrop'), inp=document.getElementById('pfDocInput');
+    drop.addEventListener('click', function(){ inp.click(); });
+    inp.addEventListener('change', function(){ if(inp.files[0]){ pendingFile=inp.files[0]; drop.classList.add('has-file'); drop.textContent='📎 '+pendingFile.name; } });
+  }
+  document.getElementById('saveProjBtn').addEventListener('click', function(){
+    var name=val('pfName').trim(); if(!name){ toast('Project name required','err'); return; }
+    var obj=Object.assign({}, p, {
+      id:p.id, name:name, status:val('pfStatus'), client:val('pfClient').trim(), site:val('pfSite').trim(),
+      startDate:val('pfStart'), endDate:val('pfEnd'), progressMode:val('pfMode'),
+      progress:Number((document.getElementById('pfProgress')||{}).value||p.progress||0), notes:val('pfNotes').trim(),
+      createdAt:p.createdAt||Date.now()
+    });
+    var saved=put('projects', obj);
+    closeModal(); toast(isNew?'Project created':'Project saved','ok');
+    if(isNew && pendingFile){
+      uploadFile(pendingFile, saved.id, {source:true}).then(function(doc){
+        openProjectDetail(saved.id, 'items');
+        if(canEdit()) setTimeout(function(){ if(confirm('Extract scope items from '+pendingFile.name+' using AI now?')) extractItems(saved, doc); }, 300);
+      });
+    } else { renderCurrent(); if(isNew) openProjectDetail(saved.id); }
+  });
+  var del=modalBox.querySelector('[data-del]');
+  if(del) del.addEventListener('click', function(){
+    if(!confirm('Delete this project and ALL its items and documents?')) return;
+    projectItems(p.id).forEach(function(t){ remove('items', t.id); });
+    projectDocs(p.id).forEach(function(d){ deleteDocument(d, true); });
+    remove('projects', p.id); closeModal(); toast('Project deleted'); renderCurrent();
+  });
+}
+
+/* ---------- project detail ---------- */
+var detailTab='overview', detailProjId=null;
+function openProjectDetail(id, tab){ var p=state.projects[id]; if(!p) return; detailProjId=id; detailTab=tab||'overview'; renderProjectDetail(); }
+function curProj(){ return state.projects[detailProjId]; }
+function renderProjectDetail(){
+  var p=curProj(); if(!p){ closeModal(); return; }
+  var head='<div class="modal-head"><div><h2>'+esc(p.name)+'</h2>'+
+      '<div class="sub">'+[statusLabel(p.status),p.client,p.site].filter(Boolean).map(esc).join(' • ')+'</div>'+
+    '</div><button class="modal-close" data-close>&times;</button></div>';
+  var tabs='<div class="detail-tabs">'+['overview','items','documents'].map(function(t){
+      return '<div class="detail-tab'+(detailTab===t?' active':'')+'" data-tab="'+t+'">'+t.charAt(0).toUpperCase()+t.slice(1)+'</div>'; }).join('')+'</div>';
+  openModal(head+tabs+'<div id="detailBody"></div>', true);
+  bindClose();
+  modalBox.querySelectorAll('.detail-tab').forEach(function(t){ t.addEventListener('click', function(){ detailTab=t.dataset.tab; renderProjectDetail(); }); });
+  renderDetailBody();
+  renderCurrent();   // keep the view behind the modal in sync with edits made inside it
+}
+function renderDetailBody(){
+  var p=curProj(); var body=document.getElementById('detailBody');
+  if(detailTab==='overview') body.innerHTML=detailOverview(p);
+  else if(detailTab==='items') body.innerHTML=detailItems(p);
+  else if(detailTab==='documents'){ body.innerHTML=detailDocuments(p); wireDocUpload(p.id); }
+  wireDetailActions(p);
+}
+function detailOverview(p){
+  var prog=projectProgress(p); var its=projectItems(p.id); var cv=contractValue(p.id);
+  var done=its.filter(function(t){ return (Number(t.percent)||0)>=100; }).length;
+  var ms=p.milestones||[];
+  var srcDocs=projectDocs(p.id).filter(function(d){ return d.source; });
+  return '<div class="mini-toolbar"><div style="font-size:13px;color:#7a8bb0">'+fmtDate(p.startDate)+' → '+fmtDate(p.endDate)+'</div>'+
+      '<button class="btn btn-secondary btn-sm edit-only" data-edit-proj>Edit Project</button></div>'+
+    '<div class="progress-big"><div class="pf" style="width:'+prog+'%"></div></div>'+
+    '<div class="pc-progress-label" style="margin:6px 0 16px"><span>'+prog+'% complete '+(p.progressMode==='manual'?'(manual)':'(weighted from '+its.length+' items)')+'</span>'+
+      '<span>'+done+'/'+its.length+' items done'+(cv?' • '+fmtRM(cv):'')+'</span></div>'+
+    (srcDocs.length? '<div class="panel"><h3>Source Documents</h3>'+srcDocs.map(function(d){
+        return '<div class="list-row"><span class="doc-badge">'+esc((d.docKind||'source'))+'</span><span class="grow">'+esc(d.name)+'</span>'+
+          '<button class="btn btn-primary btn-sm" data-doc-open="'+d.id+'">Open</button></div>'; }).join('')+'</div>':'')+
+    (p.notes?'<div class="panel"><h3>Notes</h3><div style="font-size:13px;white-space:pre-wrap;color:#ccd3e0">'+esc(p.notes)+'</div></div>':'')+
+    '<div class="panel"><div class="mini-toolbar"><h3 style="margin:0">Milestones</h3>'+
+      '<button class="btn btn-add btn-sm edit-only" data-add-ms>+ Milestone</button></div>'+
+      (ms.length? ms.map(function(m,i){
+        return '<div class="milestone'+(m.done?' done':'')+'"><input type="checkbox" data-ms-toggle="'+i+'"'+(m.done?' checked':'')+(canEdit()?'':' disabled')+'>'+
+          '<span class="m-name">'+esc(m.name)+'</span><span class="muted">'+fmtDate(m.date)+'</span>'+
+          (canEdit()?'<button class="btn btn-danger btn-sm" data-ms-del="'+i+'">×</button>':'')+'</div>';
+      }).join('') : '<div class="empty-state" style="padding:16px 0">No milestones</div>')+
+    '</div>';
+}
+function detailItems(p){
+  var its=projectItems(p.id); var cv=contractValue(p.id);
+  var srcDoc=projectDocs(p.id).filter(function(d){ return d.source; })[0];
+  return '<div class="mini-toolbar"><div style="font-size:12px;color:#7a8bb0">'+its.length+' items'+(cv?' • '+fmtRM(cv)+' total':'')+'</div>'+
+      '<div style="display:flex;gap:8px;flex-wrap:wrap">'+
+        '<button class="btn btn-ai btn-sm edit-only" data-extract>✨ Extract items with AI</button>'+
+        '<button class="btn btn-secondary btn-sm edit-only" data-paste>Paste items</button>'+
+        '<button class="btn btn-add btn-sm edit-only" data-add-item>+ Item</button>'+
+      '</div></div>'+
+    (its.length?
+      '<table class="item-table"><thead><tr><th style="width:34px">#</th><th>Description</th><th class="num-col">Qty</th><th>Unit</th><th class="amt">Value</th><th style="width:170px">% Complete</th>'+(canEdit()?'<th style="width:40px"></th>':'')+'</tr></thead><tbody>'+
+      its.map(function(it,idx){
+        var pct=Number(it.percent)||0;
+        return '<tr data-item="'+it.id+'">'+
+          '<td class="num-col">'+(it.no||idx+1)+'</td>'+
+          '<td class="item-desc">'+esc(it.description||'')+(it.section?'<div style="font-size:11px;color:#4fc3f7">'+esc(it.section)+'</div>':'')+'</td>'+
+          '<td class="num-col">'+(it.qty!=null&&it.qty!==''?fmtNum(it.qty):'')+'</td>'+
+          '<td>'+esc(it.unit||'')+'</td>'+
+          '<td class="amt">'+(it.amount?fmtRM(it.amount):'')+'</td>'+
+          '<td><div class="pct-cell"><input type="number" class="pct-input" min="0" max="100" value="'+pct+'" data-pct="'+it.id+'"'+(canEdit()?'':' readonly')+'>'+
+            '<span class="pct-bar"><span class="pct-fill'+(pct>=100?' done':'')+'" style="width:'+pct+'%"></span></span></div></td>'+
+          (canEdit()?'<td><button class="btn btn-secondary btn-sm" data-edit-item="'+it.id+'">✎</button></td>':'')+
+        '</tr>';
+      }).join('')+'</tbody></table>'
+    : '<div class="empty-state" style="padding:24px 0">No items yet.<br>'+(srcDoc?'Click <b>Extract items with AI</b> to read them from '+esc(srcDoc.name)+'.':'Upload a PO/BQ in Documents then extract, or add items manually.')+'</div>');
+}
+function detailDocuments(p){
+  var docs=projectDocs(p.id);
+  return (canEdit()?'<div class="dropzone" id="docDrop">Drop files here or <b>click to upload</b>'+(FB_ENABLED?'':'<br><span style="font-size:11px;color:#f5b041">Local mode: files kept in this browser only</span>')+'<input type="file" id="docInput" multiple style="display:none"></div>':'')+
+    (docs.length?'<div class="doc-grid">'+docs.map(docCardHTML).join('')+'</div>':'<div class="empty-state" style="padding:20px 0">No documents</div>');
+}
+function docCardHTML(d){
+  return '<div class="doc-card'+(d.source?' source':'')+'"><div class="doc-icon">'+docIcon(d.type,d.name)+'</div>'+
+    (d.source?'<span class="doc-badge">'+esc(d.docKind||'source')+'</span>':'')+
+    '<div class="doc-name">'+esc(d.name)+'</div>'+
+    '<div class="doc-meta">'+(d.size?fmtSize(d.size):'')+' • '+fmtDate((d.uploadedAt||'').slice(0,10))+'</div>'+
+    '<div class="doc-actions"><button class="btn btn-primary btn-sm" data-doc-open="'+d.id+'">Open</button>'+
+      (canEdit()?'<button class="btn btn-danger btn-sm" data-doc-del="'+d.id+'">Delete</button>':'')+'</div></div>';
+}
+function docIcon(type,name){
+  var n=(name||'').toLowerCase();
+  if((type||'').indexOf('image')===0) return '🖼️';
+  if(n.endsWith('.pdf')) return '📕';
+  if(/\.(xls|xlsx|csv)$/.test(n)) return '📊';
+  if(/\.(doc|docx)$/.test(n)) return '📘';
+  if(/\.(dwg|dxf)$/.test(n)) return '📐';
+  return '📄';
+}
+function fmtSize(b){ b=Number(b)||0; if(b<1024) return b+' B'; if(b<1048576) return (b/1024).toFixed(0)+' KB'; return (b/1048576).toFixed(1)+' MB'; }
+
+function wireDetailActions(p){
+  var ed=modalBox.querySelector('[data-edit-proj]'); if(ed) ed.addEventListener('click', function(){ openProjectForm(curProj()); });
+  var ai=modalBox.querySelector('[data-extract]'); if(ai) ai.addEventListener('click', function(){
+    var src=projectDocs(p.id).filter(function(d){ return d.source; })[0] || projectDocs(p.id)[0];
+    if(!src){ toast('Upload a PO/BQ document first (Documents tab)','err'); return; }
+    extractItems(curProj(), src);
+  });
+  var ps=modalBox.querySelector('[data-paste]'); if(ps) ps.addEventListener('click', function(){ openPasteItems(curProj()); });
+  var ai2=modalBox.querySelector('[data-add-item]'); if(ai2) ai2.addEventListener('click', function(){ openItemForm({projectId:p.id}); });
+  modalBox.querySelectorAll('[data-edit-item]').forEach(function(b){ b.addEventListener('click', function(){ openItemForm(state.items[b.dataset.editItem]); }); });
+  modalBox.querySelectorAll('[data-pct]').forEach(function(inp){
+    inp.addEventListener('change', function(){
+      var it=state.items[inp.dataset.pct]; if(!it||!canEdit()) return;
+      var v=Math.max(0,Math.min(100, Math.round(Number(inp.value)||0)));
+      put('items', Object.assign({}, it, {percent:v})); renderProjectDetail();
+    });
+  });
+  var ams=modalBox.querySelector('[data-add-ms]'); if(ams) ams.addEventListener('click', function(){ addMilestone(curProj()); });
+  modalBox.querySelectorAll('[data-ms-toggle]').forEach(function(cb){ cb.addEventListener('change', function(){ toggleMilestone(curProj(), +cb.dataset.msToggle); }); });
+  modalBox.querySelectorAll('[data-ms-del]').forEach(function(b){ b.addEventListener('click', function(){ delMilestone(curProj(), +b.dataset.msDel); }); });
+  modalBox.querySelectorAll('[data-doc-open]').forEach(function(b){ b.addEventListener('click', function(){ openDocument(state.documents[b.dataset.docOpen]); }); });
+  modalBox.querySelectorAll('[data-doc-del]').forEach(function(b){ b.addEventListener('click', function(){ if(confirm('Delete this document?')){ deleteDocument(state.documents[b.dataset.docDel]); renderProjectDetail(); } }); });
+}
+
+/* ---------- milestones ---------- */
+function addMilestone(p){
+  var name=prompt('Milestone name:'); if(!name) return;
+  var date=prompt('Target date (YYYY-MM-DD), optional:')||'';
+  var arr=(p.milestones||[]).slice(); arr.push({name:name.trim(),date:date.trim(),done:false});
+  put('projects', Object.assign({}, p, {milestones:arr})); renderProjectDetail();
+}
+function toggleMilestone(p,i){ var arr=(p.milestones||[]).slice(); if(!arr[i]) return; arr[i]=Object.assign({},arr[i],{done:!arr[i].done}); put('projects', Object.assign({}, p, {milestones:arr})); renderProjectDetail(); }
+function delMilestone(p,i){ var arr=(p.milestones||[]).slice(); arr.splice(i,1); put('projects', Object.assign({}, p, {milestones:arr})); renderProjectDetail(); }
+
+/* ---------- item form ---------- */
+function nextItemOrder(pid){ var its=projectItems(pid); return its.length? (its[its.length-1].order||its.length)+1 : 1; }
+function openItemForm(it){
+  it=it||{}; var isNew=!it.id;
+  if(!Object.keys(state.projects).length){ toast('Create a project first','err'); return; }
+  var projOpts=sortedProjects().map(function(p){ return '<option value="'+p.id+'"'+(it.projectId===p.id?' selected':'')+'>'+esc(p.name)+'</option>'; }).join('');
+  openModal(
+    '<div class="modal-head"><h2>'+(isNew?'New Item':'Edit Item')+'</h2><button class="modal-close" data-close>&times;</button></div>'+
+    '<div class="form-grid">'+
+      '<div class="field full"><label>Description *</label><input type="text" id="ifDesc" value="'+esc(it.description||'')+'" autofocus></div>'+
+      '<div class="field full"><label>Project</label><select id="ifProj">'+projOpts+'</select></div>'+
+      field('Section / Category','ifSection',it.section)+
+      field('Line No.','ifNo',it.no)+
+      field('Quantity','ifQty',it.qty,'number')+
+      field('Unit','ifUnit',it.unit)+
+      field('Unit Rate (RM)','ifRate',it.rate,'number')+
+      field('Value (RM)','ifAmount',it.amount,'number')+
+      '<div class="field"><label>% Complete</label><div class="range"><input type="range" id="ifPct" min="0" max="100" value="'+(Number(it.percent)||0)+'"><span class="val" id="ifPctVal">'+(Number(it.percent)||0)+'%</span></div></div>'+
+    '</div>'+
+    '<div class="field hint" style="margin-top:-4px">Leave Value blank to auto-calc from Qty × Rate.</div>'+
+    '<div class="modal-foot">'+
+      (isNew?'':'<button class="btn btn-danger" data-del>Delete</button>')+
+      '<button class="btn btn-secondary" data-close>Cancel</button>'+
+      '<button class="btn btn-primary" id="saveItemBtn">'+(isNew?'Add':'Save')+'</button>'+
+    '</div>'
+  );
+  bindClose();
+  document.getElementById('ifPct').addEventListener('input', function(){ document.getElementById('ifPctVal').textContent=this.value+'%'; });
+  document.getElementById('saveItemBtn').addEventListener('click', function(){
+    var desc=val('ifDesc').trim(); if(!desc){ toast('Description required','err'); return; }
+    var pid=val('ifProj');
+    var qty=val('ifQty')===''?'':Number(val('ifQty'));
+    var rate=val('ifRate')===''?'':Number(val('ifRate'));
+    var amount=val('ifAmount')===''? ((qty!==''&&rate!=='')? qty*rate : '') : Number(val('ifAmount'));
+    var obj=Object.assign({}, it, {
+      id:it.id, projectId:pid, description:desc, section:val('ifSection').trim(), no:val('ifNo').trim(),
+      qty:qty, unit:val('ifUnit').trim(), rate:rate, amount:amount, percent:Number(val('ifPct'))||0,
+      order: it.order!=null? it.order : nextItemOrder(pid), createdAt:it.createdAt||Date.now()
+    });
+    put('items', obj); closeModal(); toast(isNew?'Item added':'Item saved','ok');
+    if(detailProjId) renderProjectDetail(); else renderCurrent();
+  });
+  var del=modalBox.querySelector('[data-del]');
+  if(del) del.addEventListener('click', function(){ if(confirm('Delete this item?')){ remove('items', it.id); closeModal(); toast('Item deleted'); if(detailProjId) renderProjectDetail(); else renderCurrent(); } });
+}
+
+/* ---------- paste items ---------- */
+function openPasteItems(p){
+  openModal(
+    '<div class="modal-head"><div><h2>Paste Items</h2><div class="sub">One item per line. Optional columns separated by | or tab:</div></div><button class="modal-close" data-close>&times;</button></div>'+
+    '<div class="extract-note">Format per line: <b>Description | Qty | Unit | Rate</b><br>e.g. <code>Supply &amp; install submersible pump | 4 | set | 8500</code> — Qty/Unit/Rate optional.</div>'+
+    '<div class="field full"><textarea id="pasteBox" style="min-height:200px" placeholder="Supply and install submersible pump | 4 | set | 8500&#10;Control panel MSSB | 1 | lot | 22000"></textarea></div>'+
+    '<div class="modal-foot"><button class="btn btn-secondary" data-close>Cancel</button><button class="btn btn-primary" id="pasteParseBtn">Preview</button></div>'
+  );
+  bindClose();
+  document.getElementById('pasteParseBtn').addEventListener('click', function(){
+    var lines=val('pasteBox').split('\n').map(function(l){ return l.trim(); }).filter(Boolean);
+    var items=lines.map(function(l){
+      var parts=l.split(/\s*[|\t]\s*/);
+      var qty=parts[1]!=null&&parts[1]!==''?Number(parts[1].replace(/[^0-9.\-]/g,'')):'';
+      var rate=parts[3]!=null&&parts[3]!==''?Number(parts[3].replace(/[^0-9.\-]/g,'')):'';
+      return { description:parts[0]||'', qty:isNaN(qty)?'':qty, unit:parts[2]||'', rate:isNaN(rate)?'':rate,
+        amount:(qty!==''&&rate!==''&&!isNaN(qty)&&!isNaN(rate))?qty*rate:'' };
+    }).filter(function(i){ return i.description; });
+    if(!items.length){ toast('Nothing to add','err'); return; }
+    showExtractPreview(p, items, 'Paste');
+  });
+}
+
+/* ---------- AI extraction ---------- */
+function extractItems(p, doc){
+  if(!FB_ENABLED || !functions){
+    toast('AI extraction needs the Firebase backend (not set up yet). Use <b>Paste items</b> or <b>+ Item</b> for now.','err',false);
+    return;
+  }
+  if(!doc || !doc.storagePath){ toast('No source document to read','err'); return; }
+  toast('<span class="spin"></span> Reading '+esc(doc.name)+' with AI…', '', true);
+  var callable=functions.httpsCallable(EXTRACT_FN);
+  callable({ projectId:p.id, storagePath:doc.storagePath, fileName:doc.name })
+    .then(function(res){
+      clearToast();
+      var items=(res.data&&res.data.items)||[];
+      if(!items.length){ toast('No items found in the document','err'); return; }
+      showExtractPreview(p, items, 'AI');
+    })
+    .catch(function(e){ clearToast(); toast('Extraction failed: '+esc(e.message||e),'err'); });
+}
+function showExtractPreview(p, items, sourceLabel){
+  var rows=items.map(function(it,i){
+    return '<tr data-row="'+i+'">'+
+      '<td><input type="text" data-f="description" value="'+esc(it.description||'')+'" style="width:100%;background:#0f3460;border:1px solid #23325a;color:#fff;border-radius:6px;padding:6px"></td>'+
+      '<td><input type="number" data-f="qty" value="'+(it.qty==null?'':it.qty)+'" style="width:70px;background:#0f3460;border:1px solid #23325a;color:#fff;border-radius:6px;padding:6px;text-align:right"></td>'+
+      '<td><input type="text" data-f="unit" value="'+esc(it.unit||'')+'" style="width:70px;background:#0f3460;border:1px solid #23325a;color:#fff;border-radius:6px;padding:6px"></td>'+
+      '<td><input type="number" data-f="rate" value="'+(it.rate==null?'':it.rate)+'" style="width:90px;background:#0f3460;border:1px solid #23325a;color:#fff;border-radius:6px;padding:6px;text-align:right"></td>'+
+      '<td><button class="btn btn-danger btn-sm" data-drop="'+i+'">×</button></td></tr>';
+  }).join('');
+  openModal(
+    '<div class="modal-head"><div><h2>Review Extracted Items</h2><div class="sub">'+items.length+' items from '+esc(sourceLabel)+' — edit or remove, then add.</div></div><button class="modal-close" data-close>&times;</button></div>'+
+    '<div class="extract-note">Check the descriptions and quantities against the original before adding. Values auto-calc from Qty × Rate.</div>'+
+    '<div style="max-height:52vh;overflow:auto"><table class="item-table"><thead><tr><th>Description</th><th>Qty</th><th>Unit</th><th>Rate</th><th></th></tr></thead><tbody id="exBody">'+rows+'</tbody></table></div>'+
+    '<div class="modal-foot"><button class="btn btn-secondary" data-close>Cancel</button><button class="btn btn-add" id="exAddBtn">Add '+items.length+' Items</button></div>', true
+  );
+  bindClose();
+  modalBox.querySelectorAll('[data-drop]').forEach(function(b){ b.addEventListener('click', function(){ var tr=b.closest('tr'); tr.parentNode.removeChild(tr); }); });
+  document.getElementById('exAddBtn').addEventListener('click', function(){
+    var trs=modalBox.querySelectorAll('#exBody tr'); var ord=nextItemOrder(p.id); var n=0;
+    trs.forEach(function(tr){
+      var g=function(f){ var e=tr.querySelector('[data-f="'+f+'"]'); return e?e.value.trim():''; };
+      var desc=g('description'); if(!desc) return;
+      var qty=g('qty')===''?'':Number(g('qty')); var rate=g('rate')===''?'':Number(g('rate'));
+      put('items', { id:uid(), projectId:p.id, description:desc, qty:qty, unit:g('unit'), rate:rate,
+        amount:(qty!==''&&rate!=='')?qty*rate:'', percent:0, order:ord++, createdAt:Date.now() });
+      n++;
+    });
+    closeModal(); toast(n+' items added','ok'); if(detailProjId) renderProjectDetail(); else renderCurrent();
+  });
+}
+
+/* =====================================================================
+   ITEMS VIEW (global)
+   ===================================================================== */
+var itemProjFilter='all', itemHideDone=false;
+function renderItemsView(){
+  var el=document.getElementById('view-items');
+  var projOpts='<option value="all">All projects</option>'+sortedProjects().map(function(p){ return '<option value="'+p.id+'"'+(itemProjFilter===p.id?' selected':'')+'>'+esc(p.name)+'</option>'; }).join('');
+  el.innerHTML=
+    '<div class="toolbar"><select id="itProjSel">'+projOpts+'</select>'+
+      '<input type="search" id="itSearch" placeholder="Search items…">'+
+      '<label><input type="checkbox" id="itHideDone"'+(itemHideDone?' checked':'')+'> Hide completed</label>'+
+      '<button class="btn btn-add spacer edit-only" id="addItemBtn">+ New Item</button></div>'+
+    '<div id="itemsTableWrap"></div>';
+  document.getElementById('itProjSel').addEventListener('change', function(){ itemProjFilter=this.value; renderItemsTable(); });
+  document.getElementById('itSearch').addEventListener('input', renderItemsTable);
+  document.getElementById('itHideDone').addEventListener('change', function(){ itemHideDone=this.checked; renderItemsTable(); });
+  var ab=document.getElementById('addItemBtn'); if(ab) ab.addEventListener('click', function(){ openItemForm({}); });
+  renderItemsTable();
+}
+function renderItemsTable(){
+  var wrap=document.getElementById('itemsTableWrap'); if(!wrap) return;
+  var q=((document.getElementById('itSearch')||{}).value||'').toLowerCase();
+  var list=Object.values(state.items).filter(function(it){
+    if(itemProjFilter!=='all' && it.projectId!==itemProjFilter) return false;
+    if(itemHideDone && (Number(it.percent)||0)>=100) return false;
+    if(q && !((it.description||'')+' '+(it.section||'')).toLowerCase().includes(q)) return false;
+    return true;
+  }).sort(function(a,b){ var d=(a.projectId||'').localeCompare(b.projectId||''); if(d) return d; return (a.order||0)-(b.order||0); });
+  if(!list.length){ wrap.innerHTML='<div class="empty-state">No items. Open a project and extract or add items.</div>'; return; }
+  wrap.innerHTML='<table class="item-table"><thead><tr><th>Project</th><th>Description</th><th class="num-col">Qty</th><th>Unit</th><th class="amt">Value</th><th style="width:170px">% Complete</th></tr></thead><tbody>'+
+    list.map(function(it){
+      var pct=Number(it.percent)||0;
+      return '<tr><td style="color:#4fc3f7;cursor:pointer" data-open="'+it.projectId+'">'+esc(projName(it.projectId))+'</td>'+
+        '<td class="item-desc">'+esc(it.description||'')+'</td>'+
+        '<td class="num-col">'+(it.qty!=null&&it.qty!==''?fmtNum(it.qty):'')+'</td>'+
+        '<td>'+esc(it.unit||'')+'</td>'+
+        '<td class="amt">'+(it.amount?fmtRM(it.amount):'')+'</td>'+
+        '<td><div class="pct-cell"><input type="number" class="pct-input" min="0" max="100" value="'+pct+'" data-gpct="'+it.id+'"'+(canEdit()?'':' readonly')+'>'+
+          '<span class="pct-bar"><span class="pct-fill'+(pct>=100?' done':'')+'" style="width:'+pct+'%"></span></span></div></td></tr>';
+    }).join('')+'</tbody></table>';
+  wrap.querySelectorAll('[data-open]').forEach(function(c){ c.addEventListener('click', function(){ openProjectDetail(c.dataset.open,'items'); }); });
+  wrap.querySelectorAll('[data-gpct]').forEach(function(inp){
+    inp.addEventListener('change', function(){
+      var it=state.items[inp.dataset.gpct]; if(!it||!canEdit()) return;
+      var v=Math.max(0,Math.min(100,Math.round(Number(inp.value)||0)));
+      put('items', Object.assign({}, it, {percent:v})); renderItemsTable();
+    });
+  });
+}
+
+/* =====================================================================
+   DOCUMENTS + UPLOAD
+   ===================================================================== */
+function renderDocuments(){
+  var el=document.getElementById('view-documents');
+  var projs=sortedProjects().filter(function(p){ return projectDocs(p.id).length; });
+  el.innerHTML=
+    (FB_ENABLED?'':'<div class="panel" style="border-color:#5c3a10"><div style="color:#f5b041;font-size:13px">⚠ Local mode — uploaded files are stored in this browser only and are <b>not shared</b>. Connect Firebase for real cloud uploads + AI item extraction.</div></div>')+
+    (projs.length? projs.map(function(p){
+      return '<div class="panel"><div class="mini-toolbar"><h3 style="margin:0;cursor:pointer" data-open="'+p.id+'">'+esc(p.name)+'</h3>'+
+        '<button class="btn btn-secondary btn-sm" data-open="'+p.id+'">Open project</button></div>'+
+        '<div class="doc-grid">'+projectDocs(p.id).map(docCardHTML).join('')+'</div></div>';
+    }).join('') : '<div class="empty-state">No documents yet. Open a project → Documents to upload.</div>');
+  el.querySelectorAll('[data-open]').forEach(function(b){ b.addEventListener('click', function(){ openProjectDetail(b.dataset.open,'documents'); }); });
+  el.querySelectorAll('[data-doc-open]').forEach(function(b){ b.addEventListener('click', function(){ openDocument(state.documents[b.dataset.docOpen]); }); });
+  el.querySelectorAll('[data-doc-del]').forEach(function(b){ b.addEventListener('click', function(){ if(confirm('Delete this document?')){ deleteDocument(state.documents[b.dataset.docDel]); renderDocuments(); } }); });
+}
+function wireDocUpload(pid){
+  var drop=document.getElementById('docDrop'); if(!drop) return;
+  var input=document.getElementById('docInput');
+  drop.addEventListener('click', function(){ input.click(); });
+  input.addEventListener('change', function(){ handleFiles(input.files, pid); });
+  ['dragover','dragenter'].forEach(function(ev){ drop.addEventListener(ev, function(e){ e.preventDefault(); drop.classList.add('drag-over'); }); });
+  ['dragleave','dragend'].forEach(function(ev){ drop.addEventListener(ev, function(){ drop.classList.remove('drag-over'); }); });
+  drop.addEventListener('drop', function(e){ e.preventDefault(); drop.classList.remove('drag-over'); handleFiles(e.dataTransfer.files, pid); });
+}
+function handleFiles(files, pid){ Array.prototype.forEach.call(files, function(f){ uploadFile(f, pid, {}); }); }
+function uploadFile(file, pid, opts){
+  opts=opts||{};
+  return new Promise(function(resolve, reject){
+    if(FB_ENABLED && storage){
+      var path='pm/projects/'+pid+'/'+Date.now()+'_'+file.name;
+      var ref=storage.ref(path);
+      toast('<span class="spin"></span> Uploading '+esc(file.name)+'…','',true);
+      ref.put(file).then(function(snap){ return snap.ref.getDownloadURL(); }).then(function(url){
+        var doc=put('documents', {id:uid(), projectId:pid, name:file.name, size:file.size, type:file.type, storagePath:path, url:url, source:!!opts.source, docKind:opts.docKind||'', uploadedAt:new Date().toISOString()});
+        clearToast(); toast('Uploaded '+esc(file.name),'ok'); refreshDocViews(pid); resolve(doc);
+      }).catch(function(e){ clearToast(); toast('Upload failed: '+esc(e.message),'err'); reject(e); });
+    } else {
+      if(file.size>3*1024*1024){ toast('Local mode: file >3MB skipped ('+esc(file.name)+')','err'); reject(new Error('too big')); return; }
+      var reader=new FileReader();
+      reader.onload=function(){
+        var doc=put('documents', {id:uid(), projectId:pid, name:file.name, size:file.size, type:file.type, dataUrl:reader.result, source:!!opts.source, docKind:opts.docKind||'', uploadedAt:new Date().toISOString()});
+        toast('Added '+esc(file.name),'ok'); refreshDocViews(pid); resolve(doc);
+      };
+      reader.onerror=reject; reader.readAsDataURL(file);
+    }
+  });
+}
+function refreshDocViews(pid){
+  if(modalBackdrop.classList.contains('open') && state.projects[pid]) renderProjectDetail();
+  if(currentView==='documents') renderDocuments();
+}
+function openDocument(d){
+  if(!d) return;
+  if(d.url){ window.open(d.url,'_blank'); }
+  else if(d.dataUrl){ var w=window.open(); if(w) w.document.write('<iframe src="'+d.dataUrl+'" style="border:0;width:100vw;height:100vh"></iframe>'); else toast('Popup blocked','err'); }
+}
+function deleteDocument(d, silent){
+  if(!d) return;
+  if(FB_ENABLED && storage && d.storagePath){ storage.ref(d.storagePath).delete().catch(function(){}); }
+  remove('documents', d.id); if(!silent) toast('Document deleted');
+}
+
+/* =====================================================================
+   USERS
+   ===================================================================== */
+function renderUsers(){
+  var el=document.getElementById('view-users');
+  if(!isAdmin()){ el.innerHTML='<div class="empty-state">Admins only.</div>'; return; }
+  if(!FB_ENABLED){ el.innerHTML='<div class="panel"><div style="color:#f5b041">User management is available once Firebase is connected. In local mode there is no login.</div></div>'; return; }
+  var users=Object.values(state.users);
+  el.innerHTML='<div class="panel"><h3>Users & Roles</h3><table class="item-table"><thead><tr><th>Email</th><th>Role</th></tr></thead><tbody>'+
+    users.map(function(u){ return '<tr><td>'+esc(u.email||u.id)+'</td><td><select data-role-for="'+u.id+'">'+['admin','editor','view'].map(function(r){ return '<option value="'+r+'"'+(u.role===r?' selected':'')+'>'+r+'</option>'; }).join('')+'</select></td></tr>'; }).join('')+
+    '</tbody></table><div style="font-size:12px;color:#7a8bb0;margin-top:12px">New users appear here after first sign-in (default role: view). Set their role to grant access.</div></div>';
+  el.querySelectorAll('[data-role-for]').forEach(function(sel){ sel.addEventListener('change', function(){ var u=state.users[sel.dataset.roleFor]; if(!u) return; put('users', Object.assign({}, u, {role:sel.value})); toast('Role updated','ok'); }); });
+}
+
+/* =====================================================================
+   FORM HELPERS
+   ===================================================================== */
+function field(label,id,value,type,required,autofocus){
+  type=type||'text';
+  return '<div class="field"><label>'+label+(required?' *':'')+'</label><input type="'+type+'" id="'+id+'" value="'+esc(value==null?'':value)+'"'+(autofocus?' autofocus':'')+(type==='number'?' step="any"':'')+'></div>';
+}
+function selField(label,id,opts,value){
+  var options=opts.map(function(o){ var v=Array.isArray(o)?o[0]:o, t=Array.isArray(o)?o[1]:statusLabel(o); return '<option value="'+v+'"'+(value===v?' selected':'')+'>'+t+'</option>'; }).join('');
+  return '<div class="field"><label>'+label+'</label><select id="'+id+'">'+options+'</select></div>';
+}
+function val(id){ var e=document.getElementById(id); return e?e.value:''; }
+function bindClose(){ modalBox.querySelectorAll('[data-close]').forEach(function(b){ b.addEventListener('click', closeModal); }); }
+
+/* =====================================================================
+   AUTH + BOOT
+   ===================================================================== */
+function setSync(kind,text){ document.getElementById('syncDot').className='sync-dot '+kind; document.getElementById('syncText').textContent=text; }
+function getAuthError(code){ return ({'auth/invalid-email':'Invalid email','auth/user-not-found':'No such user','auth/wrong-password':'Wrong password','auth/invalid-credential':'Wrong email or password','auth/too-many-requests':'Too many attempts, try later'})[code]||'Sign-in failed'; }
+
+function startApp(){
+  document.getElementById('appShell').style.display='flex';
+  document.getElementById('loginWrap').classList.remove('show');
+  if(VIEW_ONLY) document.body.classList.add('readonly');
+  document.querySelectorAll('.admin-only').forEach(function(e){ e.style.display=isAdmin()?'flex':'none'; });
+  switchView('dashboard');
+}
+function bootLocal(){
+  loadLocal(); currentUser={ email:'local', role:VIEW_ONLY?'view':'admin' };
+  setSync('local','Local mode');
+  var b=document.getElementById('localBanner'); b.style.display='block';
+  b.innerHTML='Running in <b>Local mode</b> — data saved in this browser only. AI item extraction activates once Firebase is connected.';
+  startApp();
+}
+function bootFirebase(){
+  firebase.initializeApp(FB_CONFIG);
+  auth=firebase.auth(); db=firebase.database(); storage=firebase.storage();
+  try { functions=firebase.app().functions(FB_REGION); } catch(e){ functions=firebase.functions(); }
+  setSync('syncing','Connecting…');
+  if(VIEW_ONLY){
+    currentUser={ email:'viewer', role:'view' };
+    subscribeFirebase();
+    db.ref('.info/connected').on('value', function(s){ setSync(s.val()?'online':'offline', s.val()?'Live (view only)':'Offline'); });
+    startApp(); return;
+  }
+  auth.onAuthStateChanged(function(user){
+    if(user){
+      document.getElementById('loginWrap').classList.remove('show');
+      var uref=db.ref(DB_PREFIX+'users/'+user.uid);
+      uref.once('value').then(function(snap){
+        var rec=snap.val(); if(!rec){ rec={id:user.uid,email:user.email,role:'view'}; uref.set(rec); }
+        currentUser={ uid:user.uid, email:user.email, role:rec.role||'view' };
+        document.getElementById('userInfo').classList.add('show');
+        document.getElementById('userName').textContent=user.email.split('@')[0];
+        document.getElementById('userAvatar').textContent=(user.email[0]||'?').toUpperCase();
+        document.getElementById('userRole').textContent=currentUser.role;
+        subscribeFirebase();
+        db.ref('.info/connected').on('value', function(s){ setSync(s.val()?'online':'offline', s.val()?'Live sync':'Offline'); });
+        startApp();
+      });
+    } else { document.getElementById('appShell').style.display='none'; document.getElementById('loginWrap').classList.add('show'); }
+  });
+}
+document.getElementById('loginBtn').addEventListener('click', doLogin);
+document.getElementById('loginPass').addEventListener('keydown', function(e){ if(e.key==='Enter') doLogin(); });
+function doLogin(){
+  var email=document.getElementById('loginEmail').value.trim(), pass=document.getElementById('loginPass').value;
+  document.getElementById('loginErr').textContent='';
+  auth.signInWithEmailAndPassword(email,pass).catch(function(e){ document.getElementById('loginErr').textContent=getAuthError(e.code); });
+}
+document.getElementById('logoutBtn').addEventListener('click', function(){ if(FB_ENABLED && auth) auth.signOut(); });
+
+if(FB_ENABLED){ bootFirebase(); } else { bootLocal(); }
+
+})();
+</script>
+</body>
+</html>

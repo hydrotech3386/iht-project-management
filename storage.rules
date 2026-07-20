@@ -1,0 +1,24 @@
+rules_version = '2';
+
+// Project Management app — all files live under pm/ so they stay separate
+// from anything else in the shared iht-project-schedule project.
+service firebase.storage {
+  match /b/{bucket}/o {
+    match /pm/projects/{projectId}/{fileName} {
+      // Signed-in users can read. Note: files opened from the app use a
+      // tokenised download URL, which works for ?view read-only links too.
+      allow read: if request.auth != null;
+
+      // Uploads: signed in, max 25MB, PDFs and images only.
+      allow write: if request.auth != null
+                   && request.resource.size < 25 * 1024 * 1024
+                   && (request.resource.contentType.matches('application/pdf')
+                       || request.resource.contentType.matches('image/.*'));
+    }
+
+    // Everything outside pm/ is denied to this app.
+    match /{allPaths=**} {
+      allow read, write: if false;
+    }
+  }
+}
