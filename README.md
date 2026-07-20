@@ -49,10 +49,22 @@ Single-file vanilla-JS app (`index.html`) — no build step. Backed by Firebase:
   and **never reaches the browser**.
 
 This app shares the `iht-project-schedule` Firebase project, so all of its data is
-namespaced under **`pm/`** (`pm/projects`, `pm/items`, `pm/documents`, `pm/users`,
-and Storage under `pm/projects/{id}/`). Nothing is ever written outside `pm/`.
+namespaced under **`pm/`** (`pm/projects`, `pm/items`, `pm/documents`, `pm/photos`,
+`pm/claims`, `pm/users`, and Storage under `pm/projects/{id}/`). Nothing is ever
+written outside `pm/`.
 
-`?view` on the URL gives a read-only view with no login.
+## Access
+
+There is **no public or anonymous mode** — every user signs in, and an admin must
+assign them a role before they can use the app.
+
+| Role | Can do |
+|---|---|
+| **Admin** | Everything, including rates, values, progress claims and user management |
+| **Project Engineer** | Create/edit projects, items and photos, update % complete. Never sees rates, values or claims |
+| **No access** | Default for a new sign-in. Blocked until an admin assigns a role |
+
+Database rules require `auth != null` for every read and write under `pm/`.
 
 ## Deploying
 

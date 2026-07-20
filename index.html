@@ -237,8 +237,7 @@ button.btn{padding:8px 16px;border:none;border-radius:6px;cursor:pointer;font-si
 .spin{display:inline-block;width:14px;height:14px;border:2px solid #c9b3f2;border-top-color:transparent;border-radius:50%;animation:rot .7s linear infinite;vertical-align:middle}
 @keyframes rot{to{transform:rotate(360deg)}}
 
-.readonly .btn-add,.readonly .btn-danger,.readonly .btn-ai,.readonly .edit-only{display:none!important}
-.readonly .pct-input{pointer-events:none;opacity:.7}
+/* no anonymous mode: access is always via a signed-in, role-assigned account */
 </style>
 </head>
 <body>
@@ -344,7 +343,8 @@ if (FB_ENABLED) {
 (function(){
 'use strict';
 
-var VIEW_ONLY = new URLSearchParams(location.search).has('view');
+/* Every user must sign in and be given a role by an admin. There is no
+   anonymous or public read-only mode. */
 var LS_KEY = 'iht_pm_v2';
 var COLS = ['projects','items','documents','photos','claims','users'];
 
@@ -363,15 +363,15 @@ function daysUntil(d){ if(!d) return null; return Math.round((new Date(d) - new 
      admin    — everything, including money, claims and user management
      engineer — Project Engineer: full editing of projects/items/photos,
                 but NEVER sees rates, values or claims
-     view     — read-only (also what ?view links get); no money either        */
-function canEdit(){ return !VIEW_ONLY && currentUser && (currentUser.role==='admin' || currentUser.role==='engineer'); }
-function isAdmin(){ return !VIEW_ONLY && currentUser && currentUser.role==='admin'; }
+     pending  — signed in but not yet granted access by an admin            */
+function hasAccess(){ return currentUser && (currentUser.role==='admin' || currentUser.role==='engineer'); }
+function canEdit(){ return hasAccess(); }
+function isAdmin(){ return currentUser && currentUser.role==='admin'; }
 function isEngineer(){ return currentUser && currentUser.role==='engineer'; }
-/* money is admin-only: engineers are deliberately blind to it, and ?view is a
-   public link so it stays blind too */
-function canSeePrice(){ return !VIEW_ONLY && currentUser && currentUser.role==='admin'; }
-var ROLES = [['admin','Admin'],['engineer','Project Engineer'],['view','View only']];
-function roleLabel(r){ var f=ROLES.filter(function(x){return x[0]===r;})[0]; return f?f[1]:(r||'view'); }
+/* money is admin-only — engineers are deliberately blind to it */
+function canSeePrice(){ return currentUser && currentUser.role==='admin'; }
+var ROLES = [['admin','Admin'],['engineer','Project Engineer'],['pending','No access']];
+function roleLabel(r){ var f=ROLES.filter(function(x){return x[0]===r;})[0]; return f?f[1]:'No access'; }
 function userLabel(u){ return (u && (u.name || (u.email||'').split('@')[0])) || '—'; }
 
 var toastEl = document.getElementById('toast'), toastTimer;
@@ -399,8 +399,6 @@ function remove(col, id){
 }
 function subscribeFirebase(){
   COLS.forEach(function(col){
-    // pm/users needs auth; ?view mode never signs in, so skip it there
-    if(col==='users' && VIEW_ONLY) return;
     db.ref(DB_PREFIX+col).on('value', function(snap){ state[col]=snap.val()||{}; renderCurrent(); },
       function(err){ console.warn('read failed for '+col, err.code); });
   });
@@ -1498,8 +1496,10 @@ function renderUsers(){
         '<td>'+esc(u.email||u.id)+'</td>'+
         '<td><select data-role-for="'+u.id+'">'+ROLES.map(function(r){ return '<option value="'+r[0]+'"'+(u.role===r[0]?' selected':'')+'>'+r[1]+'</option>'; }).join('')+'</select></td></tr>';
     }).join('')+
-    '</tbody></table><div style="font-size:12px;color:#7a8bb0;margin-top:12px">New users appear here after first sign-in (default role: View only). '+
-    '<b>Project Engineer</b> can edit projects, items and photos but never sees rates, values or claims.</div></div>';
+    '</tbody></table><div style="font-size:12px;color:#7a8bb0;margin-top:12px">'+
+    'New sign-ins appear here with <b>No access</b> and cannot use the app until you assign them a role. '+
+    '<b>Project Engineer</b> can edit projects, items and photos but never sees rates, values or claims. '+
+    'Setting someone back to <b>No access</b> locks them out on their next load.</div></div>';
   el.querySelectorAll('[data-role-for]').forEach(function(sel){ sel.addEventListener('change', function(){
     var u=state.users[sel.dataset.roleFor]; if(!u) return;
     put('users', Object.assign({}, u, {role:sel.value})); toast('Role updated','ok');
@@ -1552,10 +1552,25 @@ function editMyName(){
 }
 function getAuthError(code){ return ({'auth/invalid-email':'Invalid email','auth/user-not-found':'No such user','auth/wrong-password':'Wrong password','auth/invalid-credential':'Wrong email or password','auth/too-many-requests':'Too many attempts, try later'})[code]||'Sign-in failed'; }
 
+/* signed in, but an admin hasn't granted a role yet */
+function showPendingScreen(email){
+  document.getElementById('appShell').style.display='none';
+  var w=document.getElementById('loginWrap');
+  w.classList.add('show');
+  w.querySelector('.login-box').innerHTML =
+    '<img class="logo-img" src="'+document.querySelector('link[rel=icon]').href+'" alt="Ipoh Hydrotech">'+
+    '<div class="logo-sub">Project Management</div>'+
+    '<div style="color:#f5b041;font-size:13px;line-height:1.6;margin-bottom:18px">'+
+      'Your account <b>'+esc(email||'')+'</b> is signed in but has not been given access yet.'+
+      '<br><br>Ask an administrator to assign you a role.'+
+    '</div>'+
+    '<button id="pendingOut">Sign Out</button>';
+  document.getElementById('pendingOut').addEventListener('click', function(){ auth.signOut().then(function(){ location.reload(); }); });
+}
+
 function startApp(){
   document.getElementById('appShell').style.display='flex';
   document.getElementById('loginWrap').classList.remove('show');
-  if(VIEW_ONLY) document.body.classList.add('readonly');
   document.querySelectorAll('.admin-only').forEach(function(e){ e.style.display=isAdmin()?'flex':'none'; });
   // Claims involve money, so engineers and view-only users never see the section
   document.querySelectorAll('.money-only').forEach(function(e){ e.style.display=canSeePrice()?'flex':'none'; });
@@ -1563,7 +1578,7 @@ function startApp(){
   switchView('dashboard');
 }
 function bootLocal(){
-  loadLocal(); currentUser={ email:'local', role:VIEW_ONLY?'view':'admin', name:'Local' };
+  loadLocal(); currentUser={ email:'local', role:'admin', name:'Local' };
   setSync('local','Local mode');
   var b=document.getElementById('localBanner'); b.style.display='block';
   b.innerHTML='Running in <b>Local mode</b> — data saved in this browser only. AI item extraction activates once Firebase is connected.';
@@ -1574,21 +1589,20 @@ function bootFirebase(){
   auth=firebase.auth(); db=firebase.database(); storage=firebase.storage();
   try { functions=firebase.app().functions(FB_REGION); } catch(e){ functions=firebase.functions(); }
   setSync('syncing','Connecting…');
-  if(VIEW_ONLY){
-    currentUser={ email:'viewer', role:'view' };
-    subscribeFirebase();
-    db.ref('.info/connected').on('value', function(s){ setSync(s.val()?'online':'offline', s.val()?'Live (view only)':'Offline'); });
-    startApp(); return;
-  }
   auth.onAuthStateChanged(function(user){
     if(user){
       document.getElementById('loginWrap').classList.remove('show');
       var uref=db.ref(DB_PREFIX+'users/'+user.uid);
       uref.once('value').then(function(snap){
-        var rec=snap.val(); if(!rec){ rec={id:user.uid,email:user.email,role:'view'}; uref.set(rec); }
-        // legacy 'editor' records become Project Engineers
+        // brand new sign-ins get NO access until an admin assigns a role
+        var rec=snap.val(); if(!rec){ rec={id:user.uid,email:user.email,role:'pending'}; uref.set(rec); }
+        // legacy roles: 'editor' became Project Engineer, 'view' is no longer a thing
         if(rec.role==='editor'){ rec.role='engineer'; uref.update({role:'engineer'}); }
-        currentUser={ uid:user.uid, email:user.email, role:rec.role||'view', name:rec.name||'' };
+        if(rec.role==='view'){ rec.role='pending'; uref.update({role:'pending'}); }
+        currentUser={ uid:user.uid, email:user.email, role:rec.role||'pending', name:rec.name||'' };
+
+        if(!hasAccess()){ showPendingScreen(user.email); return; }
+
         paintUserInfo();
         subscribeFirebase();
         db.ref('.info/connected').on('value', function(s){ setSync(s.val()?'online':'offline', s.val()?'Live sync':'Offline'); });
