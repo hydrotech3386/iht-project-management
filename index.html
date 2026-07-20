@@ -136,6 +136,8 @@ button.btn{padding:8px 16px;border:none;border-radius:6px;cursor:pointer;font-si
 .item-table .amt{text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap}
 .item-table .num-col{text-align:right;font-variant-numeric:tabular-nums}
 .item-desc{color:#fff}
+.name-input{width:100%;background:#0f3460;border:1px solid #23325a;color:#fff;border-radius:6px;padding:6px 8px;font-size:13px;font-family:inherit}
+.name-input:focus{outline:none;border-color:#e94560}
 .item-sec{color:#4fc3f7;font-weight:700;font-size:11px;text-transform:uppercase;background:#131c33}
 .pct-cell{display:flex;align-items:center;gap:8px;min-width:150px}
 .pct-input{width:56px;background:#0f3460;border:1px solid #23325a;color:#fff;border-radius:6px;padding:5px 6px;font-size:13px;text-align:right}
@@ -197,6 +199,24 @@ button.btn{padding:8px 16px;border:none;border-radius:6px;cursor:pointer;font-si
 /* extract preview */
 .extract-note{background:#231a3a;border:1px solid #3a2a5a;border-radius:9px;padding:10px 12px;font-size:12px;color:#c9b3f2;margin-bottom:12px}
 
+/* ---------- Photos ---------- */
+.btn-photo{background:#0f3460;border:1px solid #23325a;color:#7a8bb0;border-radius:6px;padding:4px 7px;cursor:pointer;font-size:13px;position:relative;line-height:1}
+.btn-photo:hover{border-color:#e94560;color:#fff}
+.btn-photo.has{color:#4fc3f7;border-color:#2a5a8a}
+.photo-count{position:absolute;top:-6px;right:-6px;background:#e94560;color:#fff;font-size:9px;font-weight:700;border-radius:9px;padding:1px 5px}
+.photo-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:10px}
+.photo-card{background:#0f3460;border:1px solid #23325a;border-radius:9px;overflow:hidden;position:relative}
+.photo-card img{width:100%;height:112px;object-fit:cover;display:block;cursor:pointer}
+.photo-cap{font-size:11px;color:#aab4cc;padding:6px 8px;word-break:break-word}
+.photo-meta{font-size:10px;color:#7a8bb0;padding:0 8px 7px}
+.photo-del{position:absolute;top:5px;right:5px;background:rgba(192,57,43,.9);border:none;color:#fff;border-radius:5px;width:22px;height:22px;cursor:pointer;font-size:13px;line-height:1}
+.photo-item-tag{position:absolute;top:5px;left:5px;background:rgba(15,52,96,.92);color:#4fc3f7;font-size:9px;font-weight:700;padding:2px 6px;border-radius:6px;max-width:76%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.lightbox{position:fixed;inset:0;background:rgba(0,0,0,.92);z-index:700;display:none;align-items:center;justify-content:center;flex-direction:column;padding:20px}
+.lightbox.open{display:flex}
+.lightbox img{max-width:94vw;max-height:82vh;object-fit:contain;border-radius:8px}
+.lightbox .cap{color:#ccd3e0;font-size:13px;margin-top:12px;text-align:center;max-width:80vw}
+.lightbox .close{position:absolute;top:16px;right:22px;background:none;border:none;color:#fff;font-size:34px;cursor:pointer;line-height:1}
+
 /* ---------- Login ---------- */
 .login-wrap{display:none;position:fixed;inset:0;background:#1a1a2e;z-index:500;align-items:center;justify-content:center;padding:20px}
 .login-wrap.show{display:flex}
@@ -245,6 +265,7 @@ button.btn{padding:8px 16px;border:none;border-radius:6px;cursor:pointer;font-si
       <div class="nav-item active" data-view="dashboard"><span class="nav-ico">▣</span> Dashboard</div>
       <div class="nav-item" data-view="projects"><span class="nav-ico">◈</span> Projects</div>
       <div class="nav-item" data-view="items"><span class="nav-ico">☑</span> Items</div>
+      <div class="nav-item money-only" data-view="claims"><span class="nav-ico">◧</span> Claims</div>
       <div class="nav-item" data-view="documents"><span class="nav-ico">▤</span> Documents</div>
       <div class="nav-item admin-only" data-view="users" style="display:none"><span class="nav-ico">⚙</span> Users</div>
     </nav>
@@ -252,7 +273,7 @@ button.btn{padding:8px 16px;border:none;border-radius:6px;cursor:pointer;font-si
       <div class="user-info" id="userInfo">
         <div class="avatar" id="userAvatar">?</div>
         <div style="flex:1;min-width:0">
-          <b id="userName">—</b>
+          <b id="userName" title="Click to change your name" style="cursor:pointer">—</b>
           <span class="role-tag" id="userRole">view</span>
         </div>
         <button class="btn-logout" id="logoutBtn">Exit</button>
@@ -272,6 +293,7 @@ button.btn{padding:8px 16px;border:none;border-radius:6px;cursor:pointer;font-si
       <div class="view active" id="view-dashboard"></div>
       <div class="view" id="view-projects"></div>
       <div class="view" id="view-items"></div>
+      <div class="view" id="view-claims"></div>
       <div class="view" id="view-documents"></div>
       <div class="view" id="view-users"></div>
     </div>
@@ -279,6 +301,7 @@ button.btn{padding:8px 16px;border:none;border-radius:6px;cursor:pointer;font-si
 </div>
 
 <div class="modal-backdrop" id="modalBackdrop"><div class="modal" id="modalBox"></div></div>
+<div class="lightbox" id="lightbox"><button class="close" id="lightboxClose">&times;</button><img id="lightboxImg" alt=""><div class="cap" id="lightboxCap"></div></div>
 <div class="toast" id="toast"></div>
 
 <!-- Firebase config -->
@@ -323,9 +346,9 @@ if (FB_ENABLED) {
 
 var VIEW_ONLY = new URLSearchParams(location.search).has('view');
 var LS_KEY = 'iht_pm_v2';
-var COLS = ['projects','items','documents','users'];
+var COLS = ['projects','items','documents','photos','claims','users'];
 
-var state = { projects:{}, items:{}, documents:{}, users:{} };
+var state = { projects:{}, items:{}, documents:{}, photos:{}, claims:{}, users:{} };
 var currentUser = null;
 var db = null, storage = null, auth = null, functions = null;
 
@@ -336,8 +359,20 @@ function fmtDate(d){ if(!d) return '—'; var p=String(d).split('-'); return p.l
 function fmtRM(n){ n=Number(n)||0; return 'RM ' + n.toLocaleString('en-MY',{minimumFractionDigits:0,maximumFractionDigits:2}); }
 function fmtNum(n){ n=Number(n)||0; return n.toLocaleString('en-MY',{maximumFractionDigits:2}); }
 function daysUntil(d){ if(!d) return null; return Math.round((new Date(d) - new Date(todayISO()))/86400000); }
-function canEdit(){ return !VIEW_ONLY && currentUser && (currentUser.role==='admin' || currentUser.role==='editor'); }
+/* Roles:
+     admin    — everything, including money, claims and user management
+     engineer — Project Engineer: full editing of projects/items/photos,
+                but NEVER sees rates, values or claims
+     view     — read-only (also what ?view links get); no money either        */
+function canEdit(){ return !VIEW_ONLY && currentUser && (currentUser.role==='admin' || currentUser.role==='engineer'); }
 function isAdmin(){ return !VIEW_ONLY && currentUser && currentUser.role==='admin'; }
+function isEngineer(){ return currentUser && currentUser.role==='engineer'; }
+/* money is admin-only: engineers are deliberately blind to it, and ?view is a
+   public link so it stays blind too */
+function canSeePrice(){ return !VIEW_ONLY && currentUser && currentUser.role==='admin'; }
+var ROLES = [['admin','Admin'],['engineer','Project Engineer'],['view','View only']];
+function roleLabel(r){ var f=ROLES.filter(function(x){return x[0]===r;})[0]; return f?f[1]:(r||'view'); }
+function userLabel(u){ return (u && (u.name || (u.email||'').split('@')[0])) || '—'; }
 
 var toastEl = document.getElementById('toast'), toastTimer;
 function toast(msg, kind, sticky){
@@ -373,7 +408,7 @@ function subscribeFirebase(){
 
 /* ---------- navigation ---------- */
 var currentView = 'dashboard';
-var VIEW_TITLES = { dashboard:'Dashboard', projects:'Projects', items:'Items', documents:'Documents', users:'Users' };
+var VIEW_TITLES = { dashboard:'Dashboard', projects:'Projects', items:'Items', claims:'Progress Claims', documents:'Documents', users:'Users' };
 function switchView(v){
   currentView=v;
   document.querySelectorAll('.nav-item').forEach(function(n){ n.classList.toggle('active', n.dataset.view===v); });
@@ -382,7 +417,7 @@ function switchView(v){
   closeSidebar(); renderCurrent();
 }
 function renderCurrent(){
-  var r = { dashboard:renderDashboard, projects:renderProjects, items:renderItemsView, documents:renderDocuments, users:renderUsers }[currentView];
+  var r = { dashboard:renderDashboard, projects:renderProjects, items:renderItemsView, claims:renderClaims, documents:renderDocuments, users:renderUsers }[currentView];
   if(r) r();
 }
 document.getElementById('navMenu').addEventListener('click', function(e){ var i=e.target.closest('.nav-item'); if(i) switchView(i.dataset.view); });
@@ -402,6 +437,17 @@ document.addEventListener('keydown', function(e){ if(e.key==='Escape') closeModa
 function projectItems(pid){ return Object.values(state.items).filter(function(t){ return t.projectId===pid; })
   .sort(function(a,b){ return (a.order||0)-(b.order||0); }); }
 function projectDocs(pid){ return Object.values(state.documents).filter(function(d){ return d.projectId===pid; }); }
+function projectPhotos(pid){ return Object.values(state.photos).filter(function(p){ return p.projectId===pid; })
+  .sort(function(a,b){ return (b.uploadedAt||'')<(a.uploadedAt||'')?-1:1; }); }
+function itemPhotos(itemId){ return Object.values(state.photos).filter(function(p){ return p.itemId===itemId; })
+  .sort(function(a,b){ return (b.uploadedAt||'')<(a.uploadedAt||'')?-1:1; }); }
+function projectClaims(pid){ return Object.values(state.claims).filter(function(c){ return c.projectId===pid; })
+  .sort(function(a,b){ return (a.claimNo||0)-(b.claimNo||0); }); }
+/* the claim immediately before this one, used for the "previous %" column */
+function prevClaimOf(claim){
+  var earlier=projectClaims(claim.projectId).filter(function(c){ return (c.claimNo||0)<(claim.claimNo||0); });
+  return earlier.length? earlier[earlier.length-1] : null;
+}
 function itemWeight(it){ var a=Number(it.amount)||0; if(a>0) return a; var q=Number(it.qty)||0; if(q>0) return q; return 1; }
 function contractValue(pid){ return projectItems(pid).reduce(function(s,it){ return s+(Number(it.amount)||0); }, 0); }
 function projectProgress(p){
@@ -512,7 +558,7 @@ function renderProjectGrid(){
       '<div class="pc-progress-label"><span>'+prog+'% complete</span><span>'+done+'/'+its.length+' items</span></div>'+
       '<div class="pc-meta">'+
         (its.length?'<span class="chip">☑ '+its.length+' items</span>':'<span class="chip">no items yet</span>')+
-        (cv?'<span class="chip">'+fmtRM(cv)+'</span>':'')+
+        (cv&&canSeePrice()?'<span class="chip">'+fmtRM(cv)+'</span>':'')+
         (projectDocs(p.id).length?'<span class="chip">▤ '+projectDocs(p.id).length+'</span>':'')+
       '</div></div>';
   }).join('');
@@ -590,7 +636,8 @@ function renderProjectDetail(){
   var head='<div class="modal-head"><div><h2>'+esc(p.name)+'</h2>'+
       '<div class="sub">'+[statusLabel(p.status),p.client,p.site].filter(Boolean).map(esc).join(' • ')+'</div>'+
     '</div><button class="modal-close" data-close>&times;</button></div>';
-  var tabs='<div class="detail-tabs">'+['overview','items','documents'].map(function(t){
+  var tabList=['overview','items','photos','documents'].concat(canSeePrice()?['claims']:[]);
+  var tabs='<div class="detail-tabs">'+tabList.map(function(t){
       return '<div class="detail-tab'+(detailTab===t?' active':'')+'" data-tab="'+t+'">'+t.charAt(0).toUpperCase()+t.slice(1)+'</div>'; }).join('')+'</div>';
   openModal(head+tabs+'<div id="detailBody"></div>', true);
   bindClose();
@@ -602,6 +649,8 @@ function renderDetailBody(){
   var p=curProj(); var body=document.getElementById('detailBody');
   if(detailTab==='overview') body.innerHTML=detailOverview(p);
   else if(detailTab==='items') body.innerHTML=detailItems(p);
+  else if(detailTab==='photos'){ body.innerHTML=detailPhotos(p); wireProjectPhotoUpload(p); }
+  else if(detailTab==='claims') body.innerHTML=detailClaims(p);
   else if(detailTab==='documents'){ body.innerHTML=detailDocuments(p); wireDocUpload(p.id); }
   wireDetailActions(p);
 }
@@ -614,7 +663,7 @@ function detailOverview(p){
       '<button class="btn btn-secondary btn-sm edit-only" data-edit-proj>Edit Project</button></div>'+
     '<div class="progress-big"><div class="pf" style="width:'+prog+'%"></div></div>'+
     '<div class="pc-progress-label" style="margin:6px 0 16px"><span>'+prog+'% complete '+(p.progressMode==='manual'?'(manual)':'(weighted from '+its.length+' items)')+'</span>'+
-      '<span>'+done+'/'+its.length+' items done'+(cv?' • '+fmtRM(cv):'')+'</span></div>'+
+      '<span>'+done+'/'+its.length+' items done'+(cv&&canSeePrice()?' • '+fmtRM(cv):'')+'</span></div>'+
     (srcDocs.length? '<div class="panel"><h3>Source Documents</h3>'+srcDocs.map(function(d){
         return '<div class="list-row"><span class="doc-badge">'+esc((d.docKind||'source'))+'</span><span class="grow">'+esc(d.name)+'</span>'+
           '<button class="btn btn-primary btn-sm" data-doc-open="'+d.id+'">Open</button></div>'; }).join('')+'</div>':'')+
@@ -629,26 +678,29 @@ function detailOverview(p){
     '</div>';
 }
 function detailItems(p){
-  var its=projectItems(p.id); var cv=contractValue(p.id);
+  var its=projectItems(p.id); var cv=contractValue(p.id); var money=canSeePrice();
   var srcDoc=projectDocs(p.id).filter(function(d){ return d.source; })[0];
-  return '<div class="mini-toolbar"><div style="font-size:12px;color:#7a8bb0">'+its.length+' items'+(cv?' • '+fmtRM(cv)+' total':'')+'</div>'+
+  return '<div class="mini-toolbar"><div style="font-size:12px;color:#7a8bb0">'+its.length+' items'+(cv&&money?' • '+fmtRM(cv)+' total':'')+'</div>'+
       '<div style="display:flex;gap:8px;flex-wrap:wrap">'+
         '<button class="btn btn-ai btn-sm edit-only" data-extract>✨ Extract items with AI</button>'+
         '<button class="btn btn-secondary btn-sm edit-only" data-paste>Paste items</button>'+
         '<button class="btn btn-add btn-sm edit-only" data-add-item>+ Item</button>'+
       '</div></div>'+
     (its.length?
-      '<table class="item-table"><thead><tr><th style="width:34px">#</th><th>Description</th><th class="num-col">Qty</th><th>Unit</th><th class="amt">Value</th><th style="width:170px">% Complete</th>'+(canEdit()?'<th style="width:40px"></th>':'')+'</tr></thead><tbody>'+
+      '<table class="item-table"><thead><tr><th style="width:34px">#</th><th>Description</th><th class="num-col">Qty</th><th>Unit</th>'+
+        (money?'<th class="amt">Value</th>':'')+
+        '<th style="width:170px">% Complete</th><th style="width:44px">Photos</th>'+(canEdit()?'<th style="width:40px"></th>':'')+'</tr></thead><tbody>'+
       its.map(function(it,idx){
-        var pct=Number(it.percent)||0;
+        var pct=Number(it.percent)||0; var np=itemPhotos(it.id).length;
         return '<tr data-item="'+it.id+'">'+
           '<td class="num-col">'+(it.no||idx+1)+'</td>'+
           '<td class="item-desc">'+esc(it.description||'')+(it.section?'<div style="font-size:11px;color:#4fc3f7">'+esc(it.section)+'</div>':'')+'</td>'+
           '<td class="num-col">'+(it.qty!=null&&it.qty!==''?fmtNum(it.qty):'')+'</td>'+
           '<td>'+esc(it.unit||'')+'</td>'+
-          '<td class="amt">'+(it.amount?fmtRM(it.amount):'')+'</td>'+
+          (money?'<td class="amt">'+(it.amount?fmtRM(it.amount):'')+'</td>':'')+
           '<td><div class="pct-cell"><input type="number" class="pct-input" min="0" max="100" value="'+pct+'" data-pct="'+it.id+'"'+(canEdit()?'':' readonly')+'>'+
             '<span class="pct-bar"><span class="pct-fill'+(pct>=100?' done':'')+'" style="width:'+pct+'%"></span></span></div></td>'+
+          '<td><button class="btn-photo'+(np?' has':'')+'" data-item-photos="'+it.id+'" title="Photos for this item">📷'+(np?'<span class="photo-count">'+np+'</span>':'')+'</button></td>'+
           (canEdit()?'<td><button class="btn btn-secondary btn-sm" data-edit-item="'+it.id+'">✎</button></td>':'')+
         '</tr>';
       }).join('')+'</tbody></table>'
@@ -695,9 +747,13 @@ function wireDetailActions(p){
       put('items', Object.assign({}, it, {percent:v})); renderProjectDetail();
     });
   });
+  var nc=modalBox.querySelector('[data-new-claim]'); if(nc) nc.addEventListener('click', function(){ newClaimFlow(p.id); });
+  modalBox.querySelectorAll('[data-claim]').forEach(function(r){ r.addEventListener('click', function(){ openClaim(r.dataset.claim); }); });
   var ams=modalBox.querySelector('[data-add-ms]'); if(ams) ams.addEventListener('click', function(){ addMilestone(curProj()); });
   modalBox.querySelectorAll('[data-ms-toggle]').forEach(function(cb){ cb.addEventListener('change', function(){ toggleMilestone(curProj(), +cb.dataset.msToggle); }); });
   modalBox.querySelectorAll('[data-ms-del]').forEach(function(b){ b.addEventListener('click', function(){ delMilestone(curProj(), +b.dataset.msDel); }); });
+  modalBox.querySelectorAll('[data-item-photos]').forEach(function(b){ b.addEventListener('click', function(e){ e.stopPropagation(); openItemPhotos(b.dataset.itemPhotos); }); });
+  wirePhotoCards(modalBox, function(){ renderProjectDetail(); });
   modalBox.querySelectorAll('[data-doc-open]').forEach(function(b){ b.addEventListener('click', function(){ openDocument(state.documents[b.dataset.docOpen]); }); });
   modalBox.querySelectorAll('[data-doc-del]').forEach(function(b){ b.addEventListener('click', function(){ if(confirm('Delete this document?')){ deleteDocument(state.documents[b.dataset.docDel]); renderProjectDetail(); } }); });
 }
@@ -727,11 +783,10 @@ function openItemForm(it){
       field('Line No.','ifNo',it.no)+
       field('Quantity','ifQty',it.qty,'number')+
       field('Unit','ifUnit',it.unit)+
-      field('Unit Rate (RM)','ifRate',it.rate,'number')+
-      field('Value (RM)','ifAmount',it.amount,'number')+
+      (canSeePrice()? field('Unit Rate (RM)','ifRate',it.rate,'number')+field('Value (RM)','ifAmount',it.amount,'number') : '')+
       '<div class="field"><label>% Complete</label><div class="range"><input type="range" id="ifPct" min="0" max="100" value="'+(Number(it.percent)||0)+'"><span class="val" id="ifPctVal">'+(Number(it.percent)||0)+'%</span></div></div>'+
     '</div>'+
-    '<div class="field hint" style="margin-top:-4px">Leave Value blank to auto-calc from Qty × Rate.</div>'+
+    (canSeePrice()?'<div class="field hint" style="margin-top:-4px">Leave Value blank to auto-calc from Qty × Rate.</div>':'')+
     '<div class="modal-foot">'+
       (isNew?'':'<button class="btn btn-danger" data-del>Delete</button>')+
       '<button class="btn btn-secondary" data-close>Cancel</button>'+
@@ -744,8 +799,15 @@ function openItemForm(it){
     var desc=val('ifDesc').trim(); if(!desc){ toast('Description required','err'); return; }
     var pid=val('ifProj');
     var qty=val('ifQty')===''?'':Number(val('ifQty'));
-    var rate=val('ifRate')===''?'':Number(val('ifRate'));
-    var amount=val('ifAmount')===''? ((qty!==''&&rate!=='')? qty*rate : '') : Number(val('ifAmount'));
+    var rate, amount;
+    if(canSeePrice()){
+      rate=val('ifRate')===''?'':Number(val('ifRate'));
+      amount=val('ifAmount')===''? ((qty!==''&&rate!=='')? qty*rate : '') : Number(val('ifAmount'));
+    } else {
+      // engineers never see the money fields — keep whatever was already there
+      rate = it.rate==null?'':it.rate;
+      amount = it.amount==null?'':it.amount;
+    }
     var obj=Object.assign({}, it, {
       id:it.id, projectId:pid, description:desc, section:val('ifSection').trim(), no:val('ifNo').trim(),
       qty:qty, unit:val('ifUnit').trim(), rate:rate, amount:amount, percent:Number(val('ifPct'))||0,
@@ -800,18 +862,20 @@ function extractItems(p, doc){
     .catch(function(e){ clearToast(); toast('Extraction failed: '+esc(e.message||e),'err'); });
 }
 function showExtractPreview(p, items, sourceLabel){
+  var money=canSeePrice();
   var rows=items.map(function(it,i){
     return '<tr data-row="'+i+'">'+
       '<td><input type="text" data-f="description" value="'+esc(it.description||'')+'" style="width:100%;background:#0f3460;border:1px solid #23325a;color:#fff;border-radius:6px;padding:6px"></td>'+
       '<td><input type="number" data-f="qty" value="'+(it.qty==null?'':it.qty)+'" style="width:70px;background:#0f3460;border:1px solid #23325a;color:#fff;border-radius:6px;padding:6px;text-align:right"></td>'+
       '<td><input type="text" data-f="unit" value="'+esc(it.unit||'')+'" style="width:70px;background:#0f3460;border:1px solid #23325a;color:#fff;border-radius:6px;padding:6px"></td>'+
-      '<td><input type="number" data-f="rate" value="'+(it.rate==null?'':it.rate)+'" style="width:90px;background:#0f3460;border:1px solid #23325a;color:#fff;border-radius:6px;padding:6px;text-align:right"></td>'+
+      (money?'<td><input type="number" data-f="rate" value="'+(it.rate==null?'':it.rate)+'" style="width:90px;background:#0f3460;border:1px solid #23325a;color:#fff;border-radius:6px;padding:6px;text-align:right"></td>'
+            :'<td><input type="hidden" data-f="rate" value="'+(it.rate==null?'':it.rate)+'"></td>')+
       '<td><button class="btn btn-danger btn-sm" data-drop="'+i+'">×</button></td></tr>';
   }).join('');
   openModal(
     '<div class="modal-head"><div><h2>Review Extracted Items</h2><div class="sub">'+items.length+' items from '+esc(sourceLabel)+' — edit or remove, then add.</div></div><button class="modal-close" data-close>&times;</button></div>'+
-    '<div class="extract-note">Check the descriptions and quantities against the original before adding. Values auto-calc from Qty × Rate.</div>'+
-    '<div style="max-height:52vh;overflow:auto"><table class="item-table"><thead><tr><th>Description</th><th>Qty</th><th>Unit</th><th>Rate</th><th></th></tr></thead><tbody id="exBody">'+rows+'</tbody></table></div>'+
+    '<div class="extract-note">Check the descriptions and quantities against the original before adding.'+(money?' Values auto-calc from Qty × Rate.':'')+'</div>'+
+    '<div style="max-height:52vh;overflow:auto"><table class="item-table"><thead><tr><th>Description</th><th>Qty</th><th>Unit</th>'+(money?'<th>Rate</th>':'')+'<th></th></tr></thead><tbody id="exBody">'+rows+'</tbody></table></div>'+
     '<div class="modal-foot"><button class="btn btn-secondary" data-close>Cancel</button><button class="btn btn-add" id="exAddBtn">Add '+items.length+' Items</button></div>', true
   );
   bindClose();
@@ -859,17 +923,21 @@ function renderItemsTable(){
     return true;
   }).sort(function(a,b){ var d=(a.projectId||'').localeCompare(b.projectId||''); if(d) return d; return (a.order||0)-(b.order||0); });
   if(!list.length){ wrap.innerHTML='<div class="empty-state">No items. Open a project and extract or add items.</div>'; return; }
-  wrap.innerHTML='<table class="item-table"><thead><tr><th>Project</th><th>Description</th><th class="num-col">Qty</th><th>Unit</th><th class="amt">Value</th><th style="width:170px">% Complete</th></tr></thead><tbody>'+
+  var money=canSeePrice();
+  wrap.innerHTML='<table class="item-table"><thead><tr><th>Project</th><th>Description</th><th class="num-col">Qty</th><th>Unit</th>'+
+    (money?'<th class="amt">Value</th>':'')+'<th style="width:170px">% Complete</th><th style="width:44px">Photos</th></tr></thead><tbody>'+
     list.map(function(it){
-      var pct=Number(it.percent)||0;
+      var pct=Number(it.percent)||0; var np=itemPhotos(it.id).length;
       return '<tr><td style="color:#4fc3f7;cursor:pointer" data-open="'+it.projectId+'">'+esc(projName(it.projectId))+'</td>'+
         '<td class="item-desc">'+esc(it.description||'')+'</td>'+
         '<td class="num-col">'+(it.qty!=null&&it.qty!==''?fmtNum(it.qty):'')+'</td>'+
         '<td>'+esc(it.unit||'')+'</td>'+
-        '<td class="amt">'+(it.amount?fmtRM(it.amount):'')+'</td>'+
+        (money?'<td class="amt">'+(it.amount?fmtRM(it.amount):'')+'</td>':'')+
         '<td><div class="pct-cell"><input type="number" class="pct-input" min="0" max="100" value="'+pct+'" data-gpct="'+it.id+'"'+(canEdit()?'':' readonly')+'>'+
-          '<span class="pct-bar"><span class="pct-fill'+(pct>=100?' done':'')+'" style="width:'+pct+'%"></span></span></div></td></tr>';
+          '<span class="pct-bar"><span class="pct-fill'+(pct>=100?' done':'')+'" style="width:'+pct+'%"></span></span></div></td>'+
+        '<td><button class="btn-photo'+(np?' has':'')+'" data-item-photos="'+it.id+'" title="Photos">📷'+(np?'<span class="photo-count">'+np+'</span>':'')+'</button></td></tr>';
     }).join('')+'</tbody></table>';
+  wrap.querySelectorAll('[data-item-photos]').forEach(function(b){ b.addEventListener('click', function(e){ e.stopPropagation(); openItemPhotos(b.dataset.itemPhotos); }); });
   wrap.querySelectorAll('[data-open]').forEach(function(c){ c.addEventListener('click', function(){ openProjectDetail(c.dataset.open,'items'); }); });
   wrap.querySelectorAll('[data-gpct]').forEach(function(inp){
     inp.addEventListener('change', function(){
@@ -945,6 +1013,478 @@ function deleteDocument(d, silent){
 }
 
 /* =====================================================================
+   PROGRESS CLAIMS
+   Each claim locks in a snapshot of every item's % at the moment it is
+   created, so the report can show Previous / This Claim / To Date.
+   ===================================================================== */
+function nextClaimNo(pid){
+  var cs=projectClaims(pid);
+  return cs.length? Math.max.apply(null, cs.map(function(c){ return Number(c.claimNo)||0; }))+1 : 1;
+}
+/* build the priced lines for a claim */
+function claimLines(claim){
+  var prev=prevClaimOf(claim);
+  return projectItems(claim.projectId).map(function(it){
+    var value=Number(it.amount)||0;
+    var thisPct=Number((claim.lines||{})[it.id])||0;
+    var prevPct=prev? (Number((prev.lines||{})[it.id])||0) : 0;
+    var toDate=value*thisPct/100;
+    var prevAmt=value*prevPct/100;
+    return { item:it, value:value, prevPct:prevPct, thisPct:thisPct,
+             prevAmt:prevAmt, toDate:toDate, thisAmt:toDate-prevAmt };
+  });
+}
+function claimTotals(claim){
+  var lines=claimLines(claim);
+  var t={ contract:0, prev:0, toDate:0, thisAmt:0 };
+  lines.forEach(function(l){ t.contract+=l.value; t.prev+=l.prevAmt; t.toDate+=l.toDate; t.thisAmt+=l.thisAmt; });
+  t.previousPaid = Number(claim.previousPaid)||0;
+  t.netDue = t.toDate - t.previousPaid;
+  t.pctOverall = t.contract>0? (t.toDate/t.contract*100) : 0;
+  return t;
+}
+
+/* ---- global Claims view ---- */
+var claimProjFilter='all';
+function renderClaims(){
+  var el=document.getElementById('view-claims');
+  if(!canSeePrice()){ el.innerHTML='<div class="empty-state">Progress claims are only available to Admin users.</div>'; return; }
+  var projOpts='<option value="all">All projects</option>'+sortedProjects().map(function(p){
+    return '<option value="'+p.id+'"'+(claimProjFilter===p.id?' selected':'')+'>'+esc(p.name)+'</option>'; }).join('');
+  var list=Object.values(state.claims).filter(function(c){ return claimProjFilter==='all'||c.projectId===claimProjFilter; })
+    .sort(function(a,b){ var d=(a.projectId||'').localeCompare(b.projectId||''); if(d) return d; return (b.claimNo||0)-(a.claimNo||0); });
+
+  el.innerHTML=
+    '<div class="toolbar"><select id="clProjSel">'+projOpts+'</select>'+
+      '<button class="btn btn-add spacer edit-only" id="newClaimBtn">+ New Claim</button></div>'+
+    (list.length?
+      '<table class="item-table"><thead><tr><th>Project</th><th style="width:70px">Claim</th><th style="width:100px">Date</th>'+
+        '<th class="amt">Contract</th><th class="amt">To Date</th><th class="amt">This Claim</th><th class="amt">Net Due</th><th style="width:90px">Status</th></tr></thead><tbody>'+
+      list.map(function(c){
+        var t=claimTotals(c);
+        return '<tr style="cursor:pointer" data-claim="'+c.id+'">'+
+          '<td>'+esc(projName(c.projectId))+'</td>'+
+          '<td><b>#'+(c.claimNo||'')+'</b></td>'+
+          '<td>'+fmtDate(c.date)+'</td>'+
+          '<td class="amt">'+fmtRM(t.contract)+'</td>'+
+          '<td class="amt">'+fmtRM(t.toDate)+'</td>'+
+          '<td class="amt" style="color:#5dfc8d">'+fmtRM(t.thisAmt)+'</td>'+
+          '<td class="amt" style="color:#4fc3f7">'+fmtRM(t.netDue)+'</td>'+
+          '<td><span class="status-badge '+claimStatusClass(c.status)+'">'+esc(c.status||'draft')+'</span></td></tr>';
+      }).join('')+'</tbody></table>'
+    : '<div class="empty-state">No progress claims yet. Open a project or click “+ New Claim”.</div>');
+
+  document.getElementById('clProjSel').addEventListener('change', function(){ claimProjFilter=this.value; renderClaims(); });
+  var nb=document.getElementById('newClaimBtn'); if(nb) nb.addEventListener('click', function(){ newClaimFlow(claimProjFilter!=='all'?claimProjFilter:null); });
+  el.querySelectorAll('[data-claim]').forEach(function(r){ r.addEventListener('click', function(){ openClaim(r.dataset.claim); }); });
+}
+function claimStatusClass(s){
+  return s==='certified'?'status-completed' : s==='submitted'?'status-in-progress' : 'status-planning';
+}
+
+/* ---- per-project Claims tab ---- */
+function detailClaims(p){
+  var cs=projectClaims(p.id).slice().reverse();
+  return '<div class="mini-toolbar"><div style="font-size:12px;color:#7a8bb0">'+cs.length+' claim(s)</div>'+
+      '<button class="btn btn-add btn-sm edit-only" data-new-claim>+ New Claim</button></div>'+
+    (cs.length?
+      '<table class="item-table"><thead><tr><th style="width:70px">Claim</th><th>Date</th><th class="amt">To Date</th><th class="amt">This Claim</th><th class="amt">Net Due</th><th>Status</th></tr></thead><tbody>'+
+      cs.map(function(c){
+        var t=claimTotals(c);
+        return '<tr style="cursor:pointer" data-claim="'+c.id+'"><td><b>#'+(c.claimNo||'')+'</b></td><td>'+fmtDate(c.date)+'</td>'+
+          '<td class="amt">'+fmtRM(t.toDate)+'</td><td class="amt" style="color:#5dfc8d">'+fmtRM(t.thisAmt)+'</td>'+
+          '<td class="amt" style="color:#4fc3f7">'+fmtRM(t.netDue)+'</td>'+
+          '<td><span class="status-badge '+claimStatusClass(c.status)+'">'+esc(c.status||'draft')+'</span></td></tr>';
+      }).join('')+'</tbody></table>'
+    : '<div class="empty-state" style="padding:22px 0">No claims yet for this project.</div>');
+}
+
+/* ---- create ---- */
+function newClaimFlow(presetPid){
+  var projs=sortedProjects();
+  if(!projs.length){ toast('Create a project first','err'); return; }
+  /* No silent default: if we weren't opened from a specific project the user
+     must pick one, otherwise it's far too easy to raise a claim against the
+     wrong job. */
+  var needPick = !presetPid;
+  var opts=(needPick?'<option value="">— select a project —</option>':'')+
+    projs.map(function(p){ return '<option value="'+p.id+'"'+(presetPid===p.id?' selected':'')+'>'+esc(p.name)+'</option>'; }).join('');
+  openModal(
+    '<div class="modal-head"><div><h2>New Progress Claim</h2><div class="sub">Locks in the current % of every item as this claim\'s position.</div></div>'+
+      '<button class="modal-close" data-close>&times;</button></div>'+
+    '<div class="form-grid">'+
+      '<div class="field full"><label>Project *</label><select id="ncProj">'+opts+'</select></div>'+
+      field('Claim Date','ncDate',todayISO(),'date')+
+      field('Work Done Up To','ncPeriod',todayISO(),'date')+
+      field('Less: Previous Payments (RM)','ncPrev','','number')+
+      '<div class="field"><label>Status</label><select id="ncStatus">'+
+        ['draft','submitted','certified'].map(function(s){return '<option value="'+s+'">'+s+'</option>';}).join('')+'</select></div>'+
+      '<div class="field full"><label>Notes</label><textarea id="ncNotes" placeholder="Optional remarks shown on the claim"></textarea></div>'+
+    '</div>'+
+    '<div class="extract-note" id="ncHint"></div>'+
+    '<div class="modal-foot"><button class="btn btn-secondary" data-close>Cancel</button>'+
+      '<button class="btn btn-primary" id="ncCreate">Create Claim</button></div>'
+  );
+  bindClose();
+  var sel=document.getElementById('ncProj');
+  function refreshHint(){
+    var pid=sel.value;
+    var btn=document.getElementById('ncCreate');
+    if(!pid){
+      document.getElementById('ncHint').innerHTML='Choose the project this claim belongs to.';
+      if(btn){ btn.disabled=true; btn.style.opacity=.5; btn.style.cursor='not-allowed'; }
+      return;
+    }
+    if(btn){ btn.disabled=false; btn.style.opacity=1; btn.style.cursor='pointer'; }
+    var cs=projectClaims(pid); var last=cs[cs.length-1];
+    var lastTotal=last? claimTotals(last).toDate : 0;
+    var np=projectItems(pid).length;
+    document.getElementById('ncHint').innerHTML =
+      'This will be <b>Claim #'+nextClaimNo(pid)+'</b> for <b>'+esc(projName(pid))+'</b> ('+np+' items). '+
+      (last? 'Previous claim #'+last.claimNo+' was '+fmtRM(lastTotal)+' to date — defaulting “previous payments” to that.'
+           : 'No earlier claims, so previous payments default to RM 0.');
+    var prevEl=document.getElementById('ncPrev');
+    if(prevEl && !prevEl.dataset.touched) prevEl.value = lastTotal? lastTotal : '';
+  }
+  sel.addEventListener('change', refreshHint);
+  document.getElementById('ncPrev').addEventListener('input', function(){ this.dataset.touched='1'; });
+  refreshHint();
+
+  document.getElementById('ncCreate').addEventListener('click', function(){
+    var pid=val('ncProj');
+    if(!pid){ toast('Select a project first','err'); return; }
+    var its=projectItems(pid);
+    if(!its.length){ toast('That project has no items to claim','err'); return; }
+    if(!confirm('Create Claim #'+nextClaimNo(pid)+' for "'+projName(pid)+'"?\n\nThis locks in the current % of all '+its.length+' items.')) return;
+    var lines={}; its.forEach(function(it){ lines[it.id]=Number(it.percent)||0; });
+    var claim=put('claims', {
+      id:uid(), projectId:pid, claimNo:nextClaimNo(pid), date:val('ncDate')||todayISO(),
+      periodTo:val('ncPeriod')||todayISO(), previousPaid:Number(val('ncPrev'))||0,
+      status:val('ncStatus')||'draft', notes:val('ncNotes').trim(), lines:lines,
+      createdAt:Date.now(), createdBy: currentUser? (currentUser.name||currentUser.email||'') : ''
+    });
+    closeModal(); toast('Claim #'+claim.claimNo+' created','ok');
+    openClaim(claim.id);
+  });
+}
+
+/* ---- view a claim ---- */
+function openClaim(id){
+  var c=state.claims[id]; if(!c) return;
+  var p=state.projects[c.projectId]||{};
+  var lines=claimLines(c), t=claimTotals(c);
+  openModal(
+    '<div class="modal-head"><div><h2>Progress Claim #'+(c.claimNo||'')+'</h2>'+
+      '<div class="sub">'+esc(p.name||'')+' • '+fmtDate(c.date)+' • '+esc(c.status||'draft')+'</div></div>'+
+      '<button class="modal-close" data-close>&times;</button></div>'+
+    '<div class="mini-toolbar"><div style="font-size:12px;color:#7a8bb0">Work done up to '+fmtDate(c.periodTo)+'</div>'+
+      '<div style="display:flex;gap:8px;flex-wrap:wrap">'+
+        '<button class="btn btn-primary btn-sm" id="clPdf">⭳ PDF</button>'+
+        '<button class="btn btn-add btn-sm" id="clXls">⭳ Excel</button>'+
+        '<button class="btn btn-secondary btn-sm edit-only" id="clEdit">Edit</button>'+
+        '<button class="btn btn-danger btn-sm edit-only" id="clDel">Delete</button>'+
+      '</div></div>'+
+    '<div style="max-height:50vh;overflow:auto">'+claimTableHTML(lines,t,false)+'</div>'+
+    (c.notes?'<div class="panel" style="margin-top:12px"><h3>Notes</h3><div style="font-size:13px;white-space:pre-wrap;color:#ccd3e0">'+esc(c.notes)+'</div></div>':''), true
+  );
+  bindClose();
+  document.getElementById('clPdf').addEventListener('click', function(){ exportClaimPDF(c); });
+  document.getElementById('clXls').addEventListener('click', function(){ exportClaimExcel(c); });
+  var e=document.getElementById('clEdit'); if(e) e.addEventListener('click', function(){ editClaim(c); });
+  var d=document.getElementById('clDel'); if(d) d.addEventListener('click', function(){
+    if(confirm('Delete Claim #'+c.claimNo+'? This does not change item progress.')){ remove('claims', c.id); closeModal(); toast('Claim deleted'); renderCurrent(); }
+  });
+}
+function claimTableHTML(lines, t, forPrint){
+  var cls=forPrint?'':'item-table';
+  return '<table class="'+cls+'" '+(forPrint?'border="1" cellspacing="0" cellpadding="5"':'')+'>'+
+    '<thead><tr><th>#</th><th>Description</th><th>Unit</th><th class="num-col">Qty</th><th class="amt">Contract (RM)</th>'+
+    '<th class="amt">Prev %</th><th class="amt">To Date %</th><th class="amt">Value To Date</th><th class="amt">This Claim</th></tr></thead><tbody>'+
+    lines.map(function(l,i){
+      return '<tr><td>'+(l.item.no||i+1)+'</td><td>'+esc(l.item.description||'')+'</td>'+
+        '<td>'+esc(l.item.unit||'')+'</td><td class="num-col">'+(l.item.qty!==''&&l.item.qty!=null?fmtNum(l.item.qty):'')+'</td>'+
+        '<td class="amt">'+fmtNum(l.value)+'</td>'+
+        '<td class="amt">'+l.prevPct+'%</td><td class="amt">'+l.thisPct+'%</td>'+
+        '<td class="amt">'+fmtNum(l.toDate)+'</td>'+
+        '<td class="amt">'+fmtNum(l.thisAmt)+'</td></tr>';
+    }).join('')+
+    '</tbody><tfoot>'+
+    '<tr><td colspan="4"></td><td class="amt"><b>'+fmtNum(t.contract)+'</b></td><td colspan="2" class="amt"><b>'+t.pctOverall.toFixed(1)+'%</b></td>'+
+      '<td class="amt"><b>'+fmtNum(t.toDate)+'</b></td><td class="amt"><b>'+fmtNum(t.thisAmt)+'</b></td></tr>'+
+    '<tr><td colspan="7" class="amt">Total Value of Work Done To Date</td><td colspan="2" class="amt"><b>'+fmtNum(t.toDate)+'</b></td></tr>'+
+    '<tr><td colspan="7" class="amt">Less: Previous Payments</td><td colspan="2" class="amt">('+fmtNum(t.previousPaid)+')</td></tr>'+
+    '<tr><td colspan="7" class="amt"><b>NET AMOUNT DUE THIS CLAIM (RM)</b></td><td colspan="2" class="amt"><b>'+fmtNum(t.netDue)+'</b></td></tr>'+
+    '</tfoot></table>';
+}
+function editClaim(c){
+  openModal(
+    '<div class="modal-head"><h2>Edit Claim #'+(c.claimNo||'')+'</h2><button class="modal-close" data-close>&times;</button></div>'+
+    '<div class="form-grid">'+
+      field('Claim Date','ecDate',c.date,'date')+
+      field('Work Done Up To','ecPeriod',c.periodTo,'date')+
+      field('Less: Previous Payments (RM)','ecPrev',c.previousPaid,'number')+
+      '<div class="field"><label>Status</label><select id="ecStatus">'+
+        ['draft','submitted','certified'].map(function(s){return '<option value="'+s+'"'+(c.status===s?' selected':'')+'>'+s+'</option>';}).join('')+'</select></div>'+
+      '<div class="field full"><label>Notes</label><textarea id="ecNotes">'+esc(c.notes||'')+'</textarea></div>'+
+    '</div>'+
+    '<div class="extract-note">Re-snapshot updates this claim to each item\'s <b>current</b> % — use it if progress changed since you created the claim.</div>'+
+    '<div class="modal-foot"><button class="btn btn-secondary" id="ecResnap">Re-snapshot %</button>'+
+      '<button class="btn btn-secondary" data-close>Cancel</button>'+
+      '<button class="btn btn-primary" id="ecSave">Save</button></div>'
+  );
+  bindClose();
+  document.getElementById('ecResnap').addEventListener('click', function(){
+    if(!confirm('Update this claim to the current % of every item?')) return;
+    var lines={}; projectItems(c.projectId).forEach(function(it){ lines[it.id]=Number(it.percent)||0; });
+    put('claims', Object.assign({}, c, {lines:lines})); toast('Claim re-snapshotted','ok'); openClaim(c.id);
+  });
+  document.getElementById('ecSave').addEventListener('click', function(){
+    put('claims', Object.assign({}, c, {
+      date:val('ecDate'), periodTo:val('ecPeriod'), previousPaid:Number(val('ecPrev'))||0,
+      status:val('ecStatus'), notes:val('ecNotes').trim()
+    }));
+    toast('Claim saved','ok'); openClaim(c.id);
+  });
+}
+
+/* ---- exports ---- */
+function claimDocHTML(c){
+  var p=state.projects[c.projectId]||{};
+  var lines=claimLines(c), t=claimTotals(c);
+  var logo=document.querySelector('.sidebar .logo-img');
+  return '<div class="claim-doc">'+
+    '<div class="cd-head">'+
+      (logo?'<img class="cd-logo" src="'+logo.src+'">':'')+
+      '<div class="cd-co"><b>IPOH HYDROTECH ENGINEERING SDN BHD</b><br>'+
+        'Progress Claim</div>'+
+    '</div>'+
+    '<h1 class="cd-title">PROGRESS CLAIM No. '+(c.claimNo||'')+'</h1>'+
+    '<table class="cd-meta"><tr><td><b>Project</b></td><td>'+esc(p.name||'')+'</td>'+
+      '<td><b>Claim Date</b></td><td>'+fmtDate(c.date)+'</td></tr>'+
+      '<tr><td><b>Client</b></td><td>'+esc(p.client||'-')+'</td><td><b>Work Done Up To</b></td><td>'+fmtDate(c.periodTo)+'</td></tr>'+
+      '<tr><td><b>Site</b></td><td>'+esc(p.site||'-')+'</td><td><b>Status</b></td><td>'+esc(c.status||'draft')+'</td></tr></table>'+
+    claimTableHTML(lines,t,true)+
+    (c.notes?'<div class="cd-notes"><b>Notes:</b><br>'+esc(c.notes).replace(/\n/g,'<br>')+'</div>':'')+
+    '<table class="cd-sign"><tr>'+
+      '<td><div class="cd-line"></div>Prepared by<br><span class="cd-sub">'+esc(c.createdBy||'')+'</span></td>'+
+      '<td><div class="cd-line"></div>Checked by</td>'+
+      '<td><div class="cd-line"></div>Certified by<br><span class="cd-sub">Client / Consultant</span></td>'+
+    '</tr></table>'+
+  '</div>';
+}
+var CLAIM_PRINT_CSS =
+ '@page{size:A4 landscape;margin:12mm}'+
+ 'body{font-family:Arial,Helvetica,sans-serif;font-size:10px;color:#000;background:#fff;margin:0}'+
+ '.claim-doc{width:100%}'+
+ '.cd-head{display:flex;align-items:center;gap:14px;border-bottom:2px solid #16213e;padding-bottom:8px;margin-bottom:12px}'+
+ '.cd-logo{height:46px;object-fit:contain;filter:brightness(0.25)}'+
+ '.cd-co{font-size:12px;line-height:1.4}'+
+ '.cd-title{font-size:15px;text-align:center;margin:8px 0 12px;letter-spacing:1px}'+
+ '.cd-meta{width:100%;border-collapse:collapse;margin-bottom:10px;font-size:10px}'+
+ '.cd-meta td{padding:3px 6px;border:1px solid #999}'+
+ 'table{width:100%;border-collapse:collapse;font-size:9.5px}'+
+ 'th,td{border:1px solid #666;padding:4px 5px;vertical-align:top}'+
+ 'th{background:#e6e9f0;font-weight:bold;text-align:left}'+
+ '.amt,.num-col{text-align:right;white-space:nowrap}'+
+ 'tfoot td{background:#f2f4f8}'+
+ '.cd-notes{margin-top:10px;font-size:10px;border:1px solid #999;padding:6px}'+
+ '.cd-sign{width:100%;margin-top:34px;border-collapse:collapse}'+
+ '.cd-sign td{border:none;width:33%;font-size:10px;padding-right:18px;vertical-align:top}'+
+ '.cd-line{border-bottom:1px solid #000;height:30px;margin-bottom:4px}'+
+ '.cd-sub{color:#555;font-size:9px}';
+
+function exportClaimPDF(c){
+  var w=window.open('','_blank');
+  if(!w){ toast('Popup blocked — allow popups to export','err'); return; }
+  w.document.write('<!DOCTYPE html><html><head><meta charset="utf-8"><title>Progress Claim '+
+    (c.claimNo||'')+' - '+esc(projName(c.projectId))+'</title><style>'+CLAIM_PRINT_CSS+'</style></head><body>'+
+    claimDocHTML(c)+'</body></html>');
+  w.document.close();
+  // give the logo a moment to decode before the print dialog opens
+  setTimeout(function(){ try{ w.focus(); w.print(); }catch(e){} }, 600);
+  toast('Choose “Save as PDF” in the print dialog','ok');
+}
+
+function exportClaimExcel(c){
+  var p=state.projects[c.projectId]||{};
+  var lines=claimLines(c), t=claimTotals(c);
+  var rows=[];
+  rows.push(['IPOH HYDROTECH ENGINEERING SDN BHD']);
+  rows.push(['PROGRESS CLAIM No. '+(c.claimNo||'')]);
+  rows.push([]);
+  rows.push(['Project', p.name||'', '', 'Claim Date', fmtDate(c.date)]);
+  rows.push(['Client', p.client||'', '', 'Work Done Up To', fmtDate(c.periodTo)]);
+  rows.push(['Site', p.site||'', '', 'Status', c.status||'draft']);
+  rows.push([]);
+  rows.push(['#','Description','Unit','Qty','Contract (RM)','Prev %','To Date %','Value To Date (RM)','This Claim (RM)']);
+  lines.forEach(function(l,i){
+    rows.push([ l.item.no||i+1, l.item.description||'', l.item.unit||'',
+      l.item.qty===''||l.item.qty==null?'':Number(l.item.qty),
+      round2(l.value), l.prevPct, l.thisPct, round2(l.toDate), round2(l.thisAmt) ]);
+  });
+  rows.push([]);
+  rows.push(['','','','TOTAL', round2(t.contract), '', round2(t.pctOverall), round2(t.toDate), round2(t.thisAmt)]);
+  rows.push(['','','','','','','','Total Value of Work Done To Date', round2(t.toDate)]);
+  rows.push(['','','','','','','','Less: Previous Payments', round2(t.previousPaid)]);
+  rows.push(['','','','','','','','NET AMOUNT DUE THIS CLAIM', round2(t.netDue)]);
+  if(c.notes){ rows.push([]); rows.push(['Notes', c.notes]); }
+
+  var name='Progress Claim '+(c.claimNo||'')+' - '+(p.name||'project').replace(/[\\\/:*?"<>|]/g,'') ;
+  downloadXLSX(rows, name);
+}
+function round2(n){ return Math.round((Number(n)||0)*100)/100; }
+
+/* Minimal SpreadsheetML writer — opens natively in Excel, no external library
+   and no CDN dependency. */
+function downloadXLSX(rows, filename){
+  var xmlEsc=function(s){ return String(s==null?'':s).replace(/[&<>"']/g,function(ch){
+    return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&apos;'}[ch]; }); };
+  var body=rows.map(function(r){
+    return '<Row>'+r.map(function(cell){
+      var isNum = typeof cell==='number' && isFinite(cell);
+      return '<Cell><Data ss:Type="'+(isNum?'Number':'String')+'">'+xmlEsc(isNum?cell:cell)+'</Data></Cell>';
+    }).join('')+'</Row>';
+  }).join('');
+  var xml='<?xml version="1.0"?><?mso-application progid="Excel.Sheet"?>'+
+    '<Workbook xmlns="urn:schemas-microsoft-com:office:spreadsheet" '+
+    'xmlns:ss="urn:schemas-microsoft-com:office:spreadsheet">'+
+    '<Worksheet ss:Name="Progress Claim"><Table>'+body+'</Table></Worksheet></Workbook>';
+  var blob=new Blob([xml],{type:'application/vnd.ms-excel'});
+  var a=document.createElement('a');
+  a.href=URL.createObjectURL(blob);
+  a.download=filename.slice(0,110)+'.xls';
+  document.body.appendChild(a); a.click();
+  setTimeout(function(){ URL.revokeObjectURL(a.href); a.remove(); }, 1500);
+  toast('Excel file downloaded','ok');
+}
+
+/* =====================================================================
+   PHOTOS
+   ===================================================================== */
+var lightbox=document.getElementById('lightbox');
+function openLightbox(ph){
+  document.getElementById('lightboxImg').src = ph.url || ph.dataUrl || '';
+  document.getElementById('lightboxCap').textContent =
+    [ph.caption, ph.itemId? ('Item: '+itemDesc(ph.itemId)) : '', fmtDate((ph.uploadedAt||'').slice(0,10))].filter(Boolean).join('  •  ');
+  lightbox.classList.add('open');
+}
+document.getElementById('lightboxClose').addEventListener('click', function(){ lightbox.classList.remove('open'); });
+lightbox.addEventListener('click', function(e){ if(e.target===lightbox) lightbox.classList.remove('open'); });
+document.addEventListener('keydown', function(e){ if(e.key==='Escape') lightbox.classList.remove('open'); });
+
+function itemDesc(id){ var it=state.items[id]; return it? (it.description||'') : ''; }
+
+function uploadPhoto(file, pid, itemId, caption){
+  return new Promise(function(resolve, reject){
+    if(!/^image\//.test(file.type)){ toast('Only image files can be added as photos','err'); reject(new Error('not image')); return; }
+    var meta={ projectId:pid, itemId:itemId||'', caption:caption||'', uploadedAt:new Date().toISOString(),
+               uploadedBy: currentUser? (currentUser.name||currentUser.email||'') : '' };
+    if(FB_ENABLED && storage){
+      var path='pm/projects/'+pid+'/photos/'+Date.now()+'_'+file.name;
+      toast('<span class="spin"></span> Uploading photo…','',true);
+      var ref=storage.ref(path);
+      ref.put(file).then(function(s){ return s.ref.getDownloadURL(); }).then(function(url){
+        var ph=put('photos', Object.assign({id:uid(), name:file.name, size:file.size, storagePath:path, url:url}, meta));
+        clearToast(); toast('Photo added','ok'); resolve(ph);
+      }).catch(function(e){ clearToast(); toast('Upload failed: '+esc(e.message),'err'); reject(e); });
+    } else {
+      if(file.size>3*1024*1024){ toast('Local mode: photo >3MB skipped','err'); reject(new Error('too big')); return; }
+      var rd=new FileReader();
+      rd.onload=function(){
+        var ph=put('photos', Object.assign({id:uid(), name:file.name, size:file.size, dataUrl:rd.result}, meta));
+        toast('Photo added','ok'); resolve(ph);
+      };
+      rd.onerror=reject; rd.readAsDataURL(file);
+    }
+  });
+}
+function deletePhoto(ph, silent){
+  if(!ph) return;
+  if(FB_ENABLED && storage && ph.storagePath){ storage.ref(ph.storagePath).delete().catch(function(){}); }
+  remove('photos', ph.id); if(!silent) toast('Photo deleted');
+}
+
+function photoCardHTML(ph, showItem){
+  return '<div class="photo-card">'+
+    '<img src="'+(ph.url||ph.dataUrl||'')+'" data-ph-open="'+ph.id+'" alt="'+esc(ph.caption||ph.name||'')+'" loading="lazy">'+
+    (showItem && ph.itemId? '<span class="photo-item-tag">'+esc(itemDesc(ph.itemId).slice(0,40))+'</span>':'')+
+    (canEdit()?'<button class="photo-del" data-ph-del="'+ph.id+'" title="Delete">×</button>':'')+
+    (ph.caption?'<div class="photo-cap">'+esc(ph.caption)+'</div>':'')+
+    '<div class="photo-meta">'+fmtDate((ph.uploadedAt||'').slice(0,10))+(ph.uploadedBy?' • '+esc(ph.uploadedBy):'')+'</div>'+
+  '</div>';
+}
+function wirePhotoCards(root, after){
+  root.querySelectorAll('[data-ph-open]').forEach(function(img){ img.addEventListener('click', function(){ openLightbox(state.photos[img.dataset.phOpen]); }); });
+  root.querySelectorAll('[data-ph-del]').forEach(function(b){ b.addEventListener('click', function(){
+    if(confirm('Delete this photo?')){ deletePhoto(state.photos[b.dataset.phDel]); if(after) after(); }
+  }); });
+}
+
+/* per-item photo gallery */
+function openItemPhotos(itemId){
+  var it=state.items[itemId]; if(!it) return;
+  var phs=itemPhotos(itemId);
+  openModal(
+    '<div class="modal-head"><div><h2>Item Photos</h2><div class="sub">'+esc(it.description||'')+'</div></div>'+
+      '<button class="modal-close" data-close>&times;</button></div>'+
+    (canEdit()?'<div class="dropzone" id="phDrop">Drop photos here or <b>click to add</b>'+
+      '<input type="file" id="phInput" accept="image/*" multiple capture="environment" style="display:none"></div>':'')+
+    (phs.length?'<div class="photo-grid" id="phGrid">'+phs.map(function(p){return photoCardHTML(p,false);}).join('')+'</div>'
+              :'<div class="empty-state" style="padding:24px 0">No photos for this item yet.</div>')
+  );
+  bindClose();
+  wirePhotoCards(modalBox, function(){ openItemPhotos(itemId); });
+  var drop=document.getElementById('phDrop');
+  if(drop){
+    var inp=document.getElementById('phInput');
+    drop.addEventListener('click', function(){ inp.click(); });
+    inp.addEventListener('change', function(){ addPhotos(inp.files, it.projectId, itemId, function(){ openItemPhotos(itemId); }); });
+    ['dragover','dragenter'].forEach(function(ev){ drop.addEventListener(ev,function(e){ e.preventDefault(); drop.classList.add('drag-over'); }); });
+    ['dragleave','dragend'].forEach(function(ev){ drop.addEventListener(ev,function(){ drop.classList.remove('drag-over'); }); });
+    drop.addEventListener('drop', function(e){ e.preventDefault(); drop.classList.remove('drag-over'); addPhotos(e.dataTransfer.files, it.projectId, itemId, function(){ openItemPhotos(itemId); }); });
+  }
+}
+function wireProjectPhotoUpload(p){
+  var drop=document.getElementById('phDropP'); if(!drop) return;
+  var inp=document.getElementById('phInputP');
+  var grab=function(){ return { item:(document.getElementById('phItemSel')||{}).value||'', cap:(document.getElementById('phCap')||{}).value||'' }; };
+  var go=function(files){ var g=grab(); addPhotosCap(files, p.id, g.item, g.cap, function(){ renderProjectDetail(); }); };
+  drop.addEventListener('click', function(){ inp.click(); });
+  inp.addEventListener('change', function(){ go(inp.files); });
+  ['dragover','dragenter'].forEach(function(ev){ drop.addEventListener(ev,function(e){ e.preventDefault(); drop.classList.add('drag-over'); }); });
+  ['dragleave','dragend'].forEach(function(ev){ drop.addEventListener(ev,function(){ drop.classList.remove('drag-over'); }); });
+  drop.addEventListener('drop', function(e){ e.preventDefault(); drop.classList.remove('drag-over'); go(e.dataTransfer.files); });
+}
+function addPhotosCap(files, pid, itemId, caption, after){
+  var list=Array.prototype.slice.call(files);
+  (function next(i){
+    if(i>=list.length){ if(after) after(); return; }
+    uploadPhoto(list[i], pid, itemId, caption).then(function(){ next(i+1); }).catch(function(){ next(i+1); });
+  })(0);
+}
+function addPhotos(files, pid, itemId, after){
+  var list=Array.prototype.slice.call(files);
+  (function next(i){
+    if(i>=list.length){ if(after) after(); return; }
+    uploadPhoto(list[i], pid, itemId, '').then(function(){ next(i+1); }).catch(function(){ next(i+1); });
+  })(0);
+}
+
+/* project-level photo tab */
+function detailPhotos(p){
+  var phs=projectPhotos(p.id);
+  var opts='<option value="">— not linked to an item —</option>'+projectItems(p.id).map(function(it,i){
+    return '<option value="'+it.id+'">'+esc((it.no||(i+1))+'. '+(it.description||'').slice(0,60))+'</option>'; }).join('');
+  return (canEdit()?
+    '<div class="panel"><div class="field" style="margin-bottom:8px"><label>Link photos to item (optional)</label><select id="phItemSel">'+opts+'</select></div>'+
+    '<div class="field" style="margin-bottom:8px"><label>Caption (optional)</label><input type="text" id="phCap" placeholder="e.g. Pump installed at wet well"></div>'+
+    '<div class="dropzone" id="phDropP" style="margin-bottom:0">Drop photos here or <b>click to add</b>'+
+      '<input type="file" id="phInputP" accept="image/*" multiple capture="environment" style="display:none"></div></div>':'')+
+    (phs.length?'<div class="photo-grid">'+phs.map(function(x){return photoCardHTML(x,true);}).join('')+'</div>'
+              :'<div class="empty-state" style="padding:24px 0">No photos yet.</div>');
+}
+
+/* =====================================================================
    USERS
    ===================================================================== */
 function renderUsers(){
@@ -952,10 +1492,24 @@ function renderUsers(){
   if(!isAdmin()){ el.innerHTML='<div class="empty-state">Admins only.</div>'; return; }
   if(!FB_ENABLED){ el.innerHTML='<div class="panel"><div style="color:#f5b041">User management is available once Firebase is connected. In local mode there is no login.</div></div>'; return; }
   var users=Object.values(state.users);
-  el.innerHTML='<div class="panel"><h3>Users & Roles</h3><table class="item-table"><thead><tr><th>Email</th><th>Role</th></tr></thead><tbody>'+
-    users.map(function(u){ return '<tr><td>'+esc(u.email||u.id)+'</td><td><select data-role-for="'+u.id+'">'+['admin','editor','view'].map(function(r){ return '<option value="'+r+'"'+(u.role===r?' selected':'')+'>'+r+'</option>'; }).join('')+'</select></td></tr>'; }).join('')+
-    '</tbody></table><div style="font-size:12px;color:#7a8bb0;margin-top:12px">New users appear here after first sign-in (default role: view). Set their role to grant access.</div></div>';
-  el.querySelectorAll('[data-role-for]').forEach(function(sel){ sel.addEventListener('change', function(){ var u=state.users[sel.dataset.roleFor]; if(!u) return; put('users', Object.assign({}, u, {role:sel.value})); toast('Role updated','ok'); }); });
+  el.innerHTML='<div class="panel"><h3>Users &amp; Roles</h3><table class="item-table"><thead><tr><th style="width:210px">Name</th><th>Email</th><th style="width:170px">Role</th></tr></thead><tbody>'+
+    users.map(function(u){
+      return '<tr><td><input type="text" class="name-input" value="'+esc(u.name||'')+'" placeholder="'+esc((u.email||'').split('@')[0])+'" data-name-for="'+u.id+'"></td>'+
+        '<td>'+esc(u.email||u.id)+'</td>'+
+        '<td><select data-role-for="'+u.id+'">'+ROLES.map(function(r){ return '<option value="'+r[0]+'"'+(u.role===r[0]?' selected':'')+'>'+r[1]+'</option>'; }).join('')+'</select></td></tr>';
+    }).join('')+
+    '</tbody></table><div style="font-size:12px;color:#7a8bb0;margin-top:12px">New users appear here after first sign-in (default role: View only). '+
+    '<b>Project Engineer</b> can edit projects, items and photos but never sees rates, values or claims.</div></div>';
+  el.querySelectorAll('[data-role-for]').forEach(function(sel){ sel.addEventListener('change', function(){
+    var u=state.users[sel.dataset.roleFor]; if(!u) return;
+    put('users', Object.assign({}, u, {role:sel.value})); toast('Role updated','ok');
+    if(currentUser && u.id===currentUser.uid) location.reload();
+  }); });
+  el.querySelectorAll('[data-name-for]').forEach(function(inp){ inp.addEventListener('change', function(){
+    var u=state.users[inp.dataset.nameFor]; if(!u) return;
+    put('users', Object.assign({}, u, {name:inp.value.trim()})); toast('Name updated','ok');
+    if(currentUser && u.id===currentUser.uid){ currentUser.name=inp.value.trim(); paintUserInfo(); }
+  }); });
 }
 
 /* =====================================================================
@@ -976,6 +1530,26 @@ function bindClose(){ modalBox.querySelectorAll('[data-close]').forEach(function
    AUTH + BOOT
    ===================================================================== */
 function setSync(kind,text){ document.getElementById('syncDot').className='sync-dot '+kind; document.getElementById('syncText').textContent=text; }
+
+function paintUserInfo(){
+  if(!currentUser) return;
+  var shown=currentUser.name || (currentUser.email||'').split('@')[0];
+  document.getElementById('userInfo').classList.add('show');
+  document.getElementById('userName').textContent=shown;
+  document.getElementById('userAvatar').textContent=(shown[0]||'?').toUpperCase();
+  document.getElementById('userRole').textContent=roleLabel(currentUser.role);
+}
+/* anyone signed in may rename themselves */
+function editMyName(){
+  if(!FB_ENABLED || !currentUser || !currentUser.uid) return;
+  var cur=currentUser.name || (currentUser.email||'').split('@')[0];
+  var n=prompt('Your display name:', cur);
+  if(n===null) return;
+  n=n.trim(); if(!n){ toast('Name cannot be empty','err'); return; }
+  var rec=state.users[currentUser.uid] || {id:currentUser.uid, email:currentUser.email, role:currentUser.role};
+  put('users', Object.assign({}, rec, {name:n}));
+  currentUser.name=n; paintUserInfo(); toast('Name updated','ok');
+}
 function getAuthError(code){ return ({'auth/invalid-email':'Invalid email','auth/user-not-found':'No such user','auth/wrong-password':'Wrong password','auth/invalid-credential':'Wrong email or password','auth/too-many-requests':'Too many attempts, try later'})[code]||'Sign-in failed'; }
 
 function startApp(){
@@ -983,10 +1557,13 @@ function startApp(){
   document.getElementById('loginWrap').classList.remove('show');
   if(VIEW_ONLY) document.body.classList.add('readonly');
   document.querySelectorAll('.admin-only').forEach(function(e){ e.style.display=isAdmin()?'flex':'none'; });
+  // Claims involve money, so engineers and view-only users never see the section
+  document.querySelectorAll('.money-only').forEach(function(e){ e.style.display=canSeePrice()?'flex':'none'; });
+  document.getElementById('userName').addEventListener('click', editMyName);
   switchView('dashboard');
 }
 function bootLocal(){
-  loadLocal(); currentUser={ email:'local', role:VIEW_ONLY?'view':'admin' };
+  loadLocal(); currentUser={ email:'local', role:VIEW_ONLY?'view':'admin', name:'Local' };
   setSync('local','Local mode');
   var b=document.getElementById('localBanner'); b.style.display='block';
   b.innerHTML='Running in <b>Local mode</b> — data saved in this browser only. AI item extraction activates once Firebase is connected.';
@@ -1009,11 +1586,10 @@ function bootFirebase(){
       var uref=db.ref(DB_PREFIX+'users/'+user.uid);
       uref.once('value').then(function(snap){
         var rec=snap.val(); if(!rec){ rec={id:user.uid,email:user.email,role:'view'}; uref.set(rec); }
-        currentUser={ uid:user.uid, email:user.email, role:rec.role||'view' };
-        document.getElementById('userInfo').classList.add('show');
-        document.getElementById('userName').textContent=user.email.split('@')[0];
-        document.getElementById('userAvatar').textContent=(user.email[0]||'?').toUpperCase();
-        document.getElementById('userRole').textContent=currentUser.role;
+        // legacy 'editor' records become Project Engineers
+        if(rec.role==='editor'){ rec.role='engineer'; uref.update({role:'engineer'}); }
+        currentUser={ uid:user.uid, email:user.email, role:rec.role||'view', name:rec.name||'' };
+        paintUserInfo();
         subscribeFirebase();
         db.ref('.info/connected').on('value', function(s){ setSync(s.val()?'online':'offline', s.val()?'Live sync':'Offline'); });
         startApp();

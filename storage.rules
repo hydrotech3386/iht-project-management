@@ -4,7 +4,9 @@ rules_version = '2';
 // from anything else in the shared iht-project-schedule project.
 service firebase.storage {
   match /b/{bucket}/o {
-    match /pm/projects/{projectId}/{fileName} {
+    // {allPaths=**} so nested folders (e.g. photos/) are covered, not just
+    // files sitting directly under the project
+    match /pm/projects/{projectId}/{allPaths=**} {
       // Signed-in users can read. Note: files opened from the app use a
       // tokenised download URL, which works for ?view read-only links too.
       allow read: if request.auth != null;
