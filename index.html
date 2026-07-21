@@ -159,6 +159,26 @@ button.btn{padding:8px 16px;border:none;border-radius:6px;cursor:pointer;font-si
 .dropzone{border:2px dashed #0f3460;border-radius:12px;padding:22px;text-align:center;color:#7a8bb0;cursor:pointer;margin-bottom:16px;font-size:13px}
 .dropzone.drag-over{border-color:#e94560;color:#e94560;background:#1a2440}
 
+/* ---------- Folders ---------- */
+.crumbs{display:flex;align-items:center;flex-wrap:wrap;gap:4px;margin-bottom:12px;font-size:13px}
+.crumb{color:#4fc3f7;cursor:pointer;padding:2px 4px;border-radius:5px}
+.crumb:hover{background:#0f3460;color:#fff}
+.crumb.here{color:#e0e0e0;font-weight:700;cursor:default}
+.crumb.here:hover{background:none}
+.crumb-sep{color:#5a6785;font-size:12px}
+.folder-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:12px;margin-bottom:14px}
+.folder-card{background:#141b30;border:1px solid #23325a;border-radius:10px;padding:14px 12px;cursor:pointer;position:relative;transition:border-color .15s}
+.folder-card:hover{border-color:#e94560}
+.folder-ico{font-size:30px;line-height:1;margin-bottom:6px}
+.folder-name{font-size:13px;color:#fff;font-weight:600;word-break:break-word}
+.folder-meta{font-size:11px;color:#7a8bb0;margin-top:3px}
+.folder-actions{position:absolute;top:6px;right:6px;display:flex;gap:4px;opacity:0;transition:opacity .15s}
+.folder-card:hover .folder-actions{opacity:1}
+.folder-actions button{background:#0f3460;border:none;color:#aab4cc;width:22px;height:22px;border-radius:5px;cursor:pointer;font-size:12px;line-height:1}
+.folder-actions button:hover{background:#e94560;color:#fff}
+.photo-move{position:absolute;top:5px;right:32px;background:rgba(15,52,96,.9);border:none;color:#fff;border-radius:5px;width:22px;height:22px;cursor:pointer;font-size:12px;line-height:1}
+.photo-move:hover{background:#2980b9}
+
 /* ---------- Modal ---------- */
 .modal-backdrop{display:none;position:fixed;inset:0;background:rgba(0,0,0,.7);z-index:400;align-items:flex-start;justify-content:center;overflow-y:auto;padding:30px 14px}
 .modal-backdrop.open{display:flex}
@@ -346,9 +366,9 @@ if (FB_ENABLED) {
 /* Every user must sign in and be given a role by an admin. There is no
    anonymous or public read-only mode. */
 var LS_KEY = 'iht_pm_v2';
-var COLS = ['projects','items','documents','photos','claims','users'];
+var COLS = ['projects','items','documents','photos','claims','folders','users'];
 
-var state = { projects:{}, items:{}, documents:{}, photos:{}, claims:{}, users:{} };
+var state = { projects:{}, items:{}, documents:{}, photos:{}, claims:{}, folders:{}, users:{} };
 var currentUser = null;
 var db = null, storage = null, auth = null, functions = null;
 
@@ -456,6 +476,29 @@ function itemPhotos(itemId){ return Object.values(state.photos).filter(function(
   .sort(function(a,b){ return (b.uploadedAt||'')<(a.uploadedAt||'')?-1:1; }); }
 function projectClaims(pid){ return Object.values(state.claims).filter(function(c){ return c.projectId===pid; })
   .sort(function(a,b){ return (a.claimNo||0)-(b.claimNo||0); }); }
+
+/* ---- folders (shared by Documents [kind='doc'] and Photos [kind='photo']) ---- */
+function subFolders(pid, kind, parentId){
+  return Object.values(state.folders).filter(function(f){ return f.projectId===pid && f.kind===kind && (f.parentId||'')===(parentId||''); })
+    .sort(function(a,b){ return (a.name||'').localeCompare(b.name||''); });
+}
+function folderPath(id){ var arr=[], f=state.folders[id], g=0; while(f && g++<25){ arr.unshift(f); f=f.parentId?state.folders[f.parentId]:null; } return arr; }
+function folderName(id){ var f=state.folders[id]; return f?f.name:''; }
+function recordsInFolder(coll, pid, folderId){
+  return Object.values(state[coll]).filter(function(r){ return r.projectId===pid && (r.folderId||'')===(folderId||''); });
+}
+/* indented <option>s of every folder of a kind, for the move picker */
+function folderOptions(pid, kind, selected){
+  var out='';
+  (function walk(parent, depth){
+    subFolders(pid, kind, parent).forEach(function(f){
+      out+='<option value="'+f.id+'"'+(selected===f.id?' selected':'')+'>'+
+        new Array(depth+1).join('   ')+esc(f.name)+'</option>';
+      walk(f.id, depth+1);
+    });
+  })('', 0);
+  return out;
+}
 /* the claim immediately before this one, used for the "previous %" column */
 function prevClaimOf(claim){
   var earlier=projectClaims(claim.projectId).filter(function(c){ return (c.claimNo||0)<(claim.claimNo||0); });
@@ -647,19 +690,25 @@ function openProjectForm(p){
   });
   var del=modalBox.querySelector('[data-del]');
   if(del) del.addEventListener('click', function(){
-    if(!confirm('Delete this project and ALL its items and documents?')) return;
+    if(!confirm('Delete this project and ALL its items, documents, photos, claims and folders?')) return;
     projectItems(p.id).forEach(function(t){ remove('items', t.id); });
     projectDocs(p.id).forEach(function(d){ deleteDocument(d, true); });
+    projectPhotos(p.id).forEach(function(ph){ deletePhoto(ph, true); });
+    projectClaims(p.id).forEach(function(c){ remove('claims', c.id); });
+    Object.values(state.folders).filter(function(f){ return f.projectId===p.id; }).forEach(function(f){ remove('folders', f.id); });
     remove('projects', p.id); closeModal(); toast('Project deleted'); renderCurrent();
   });
 }
 
 /* ---------- project detail ---------- */
 var detailTab='overview', detailProjId=null;
+var docFolderId='', photoFolderId='';   // current folder in each tab
+function curFolder(kind){ return kind==='photo'?photoFolderId:docFolderId; }
+function setFolder(kind, id){ if(kind==='photo') photoFolderId=id; else docFolderId=id; }
 function openProjectDetail(id, tab){
   var p=state.projects[id]; if(!p) return;
   if(!canSeeProject(p)){ toast('That project is not assigned to you','err'); return; }
-  detailProjId=id; detailTab=tab||'overview'; renderProjectDetail();
+  detailProjId=id; detailTab=tab||'overview'; docFolderId=''; photoFolderId=''; renderProjectDetail();
 }
 function curProj(){ return state.projects[detailProjId]; }
 function renderProjectDetail(){
@@ -680,9 +729,9 @@ function renderDetailBody(){
   var p=curProj(); var body=document.getElementById('detailBody');
   if(detailTab==='overview') body.innerHTML=detailOverview(p);
   else if(detailTab==='items') body.innerHTML=detailItems(p);
-  else if(detailTab==='photos'){ body.innerHTML=detailPhotos(p); wireProjectPhotoUpload(p); }
+  else if(detailTab==='photos'){ body.innerHTML=detailPhotos(p); wireProjectPhotoUpload(p); wireFolderChrome(p); }
   else if(detailTab==='claims') body.innerHTML=detailClaims(p);
-  else if(detailTab==='documents'){ body.innerHTML=detailDocuments(p); wireDocUpload(p.id); }
+  else if(detailTab==='documents'){ body.innerHTML=detailDocuments(p); wireDocUpload(p.id); wireFolderChrome(p); }
   wireDetailActions(p);
 }
 function detailOverview(p){
@@ -737,10 +786,45 @@ function detailItems(p){
       }).join('')+'</tbody></table>'
     : '<div class="empty-state" style="padding:24px 0">No items yet.<br>'+(srcDoc?'Click <b>Extract items with AI</b> to read them from '+esc(srcDoc.name)+'.':'Upload a PO/BQ in Documents then extract, or add items manually.')+'</div>');
 }
+/* ---------- shared folder chrome (used by both Documents and Photos) ---------- */
+function folderCrumb(p, kind){
+  var cur=curFolder(kind), path=cur?folderPath(cur):[];
+  var root=kind==='photo'?'All Photos':'All Documents';
+  var html='<div class="crumbs"><span class="crumb'+(cur?'':' here')+'" data-crumb="" data-kind="'+kind+'">📂 '+root+'</span>';
+  path.forEach(function(f,i){ var last=i===path.length-1;
+    html+='<span class="crumb-sep">›</span><span class="crumb'+(last?' here':'')+'" data-crumb="'+f.id+'" data-kind="'+kind+'">'+esc(f.name)+'</span>'; });
+  return html+'</div>';
+}
+function folderCards(p, kind){
+  var subs=subFolders(p.id, kind, curFolder(kind));
+  if(!subs.length) return '';
+  var coll=kind==='photo'?'photos':'documents';
+  return '<div class="folder-grid">'+subs.map(function(f){
+    var nR=recordsInFolder(coll,p.id,f.id).length, nS=subFolders(p.id,kind,f.id).length;
+    return '<div class="folder-card" data-folder-open="'+f.id+'" data-kind="'+kind+'">'+
+      (canEdit()?'<div class="folder-actions"><button data-folder-rename="'+f.id+'" title="Rename">✎</button><button data-folder-del="'+f.id+'" title="Delete">×</button></div>':'')+
+      '<div class="folder-ico">📁</div>'+
+      '<div class="folder-name">'+esc(f.name)+'</div>'+
+      '<div class="folder-meta">'+(nS?nS+' folder'+(nS>1?'s':'')+' • ':'')+nR+' '+(kind==='photo'?'photo':'file')+(nR===1?'':'s')+'</div>'+
+    '</div>';
+  }).join('')+'</div>';
+}
+function folderBar(p, kind){
+  if(!canEdit()) return '';
+  var here=curFolder(kind)? '“'+esc(folderName(curFolder(kind)))+'”' : (kind==='photo'?'All Photos':'All Documents');
+  return '<div class="mini-toolbar" style="margin-bottom:10px"><div style="font-size:12px;color:#7a8bb0">In '+here+'</div>'+
+    '<button class="btn btn-secondary btn-sm" data-folder-new="'+kind+'">+ New Folder</button></div>';
+}
+
 function detailDocuments(p){
-  var docs=projectDocs(p.id);
-  return (canEdit()?'<div class="dropzone" id="docDrop">Drop files here or <b>click to upload</b>'+(FB_ENABLED?'':'<br><span style="font-size:11px;color:#f5b041">Local mode: files kept in this browser only</span>')+'<input type="file" id="docInput" multiple style="display:none"></div>':'')+
-    (docs.length?'<div class="doc-grid">'+docs.map(docCardHTML).join('')+'</div>':'<div class="empty-state" style="padding:20px 0">No documents</div>');
+  var cur=docFolderId;
+  var docs=recordsInFolder('documents',p.id,cur).sort(function(a,b){ return (b.uploadedAt||'')<(a.uploadedAt||'')?-1:1; });
+  var hasSub=subFolders(p.id,'doc',cur).length;
+  return folderBar(p,'doc')+folderCrumb(p,'doc')+
+    (canEdit()?'<div class="dropzone" id="docDrop">Drop files here or <b>click to upload</b> into this folder'+(FB_ENABLED?'':'<br><span style="font-size:11px;color:#f5b041">Local mode: files kept in this browser only</span>')+'<input type="file" id="docInput" multiple style="display:none"></div>':'')+
+    folderCards(p,'doc')+
+    (docs.length?'<div class="doc-grid">'+docs.map(docCardHTML).join('')+'</div>'
+      :(hasSub?'':'<div class="empty-state" style="padding:20px 0">No documents in this folder</div>'));
 }
 function docCardHTML(d){
   return '<div class="doc-card'+(d.source?' source':'')+'"><div class="doc-icon">'+docIcon(d.type,d.name)+'</div>'+
@@ -748,7 +832,8 @@ function docCardHTML(d){
     '<div class="doc-name">'+esc(d.name)+'</div>'+
     '<div class="doc-meta">'+(d.size?fmtSize(d.size):'')+' • '+fmtDate((d.uploadedAt||'').slice(0,10))+'</div>'+
     '<div class="doc-actions"><button class="btn btn-primary btn-sm" data-doc-open="'+d.id+'">Open</button>'+
-      (canEdit()?'<button class="btn btn-danger btn-sm" data-doc-del="'+d.id+'">Delete</button>':'')+'</div></div>';
+      (canEdit()?'<button class="btn btn-secondary btn-sm" data-doc-move="'+d.id+'" title="Move to folder">📁</button>'+
+                 '<button class="btn btn-danger btn-sm" data-doc-del="'+d.id+'">Delete</button>':'')+'</div></div>';
 }
 function docIcon(type,name){
   var n=(name||'').toLowerCase();
@@ -795,6 +880,61 @@ function addMilestone(p){
   var date=prompt('Target date (YYYY-MM-DD), optional:')||'';
   var arr=(p.milestones||[]).slice(); arr.push({name:name.trim(),date:date.trim(),done:false});
   put('projects', Object.assign({}, p, {milestones:arr})); renderProjectDetail();
+}
+/* ---------- folder actions ---------- */
+function newFolder(p, kind){
+  var name=prompt((kind==='photo'?'Photo':'Document')+' folder name:'); if(name==null) return;
+  name=name.trim(); if(!name){ toast('Folder name required','err'); return; }
+  put('folders', {id:uid(), projectId:p.id, kind:kind, parentId:curFolder(kind), name:name, createdAt:Date.now()});
+  renderProjectDetail();
+}
+function renameFolder(f){
+  var n=prompt('Rename folder:', f.name); if(n==null) return; n=n.trim(); if(!n) return;
+  put('folders', Object.assign({}, f, {name:n})); renderProjectDetail();
+}
+function deleteFolder(f){
+  var kind=f.kind, coll=kind==='photo'?'photos':'documents';
+  var subs=subFolders(f.projectId,kind,f.id), recs=recordsInFolder(coll,f.projectId,f.id);
+  var msg = (subs.length||recs.length)
+    ? 'Delete folder “'+f.name+'”?\n\nIts '+recs.length+' '+(kind==='photo'?'photo(s)':'file(s)')+
+      (subs.length?' and '+subs.length+' subfolder(s)':'')+' will be moved up one level (nothing is deleted).'
+    : 'Delete empty folder “'+f.name+'”?';
+  if(!confirm(msg)) return;
+  subs.forEach(function(sf){ put('folders', Object.assign({}, sf, {parentId:f.parentId||''})); });
+  recs.forEach(function(r){ put(coll, Object.assign({}, r, {folderId:f.parentId||''})); });
+  if(curFolder(kind)===f.id) setFolder(kind, f.parentId||'');
+  remove('folders', f.id); toast('Folder deleted'); renderProjectDetail();
+}
+function openMoveModal(kind, coll, id){
+  var rec=state[coll][id]; if(!rec) return;
+  var rootLbl=kind==='photo'?'All Photos (top level)':'All Documents (top level)';
+  openModal(
+    '<div class="modal-head"><div><h2>Move to folder</h2><div class="sub">'+esc(rec.name||rec.caption||'item')+'</div></div>'+
+      '<button class="modal-close" data-close>&times;</button></div>'+
+    '<div class="field full"><label>Destination folder</label><select id="mvSel">'+
+      '<option value="">— '+rootLbl+' —</option>'+folderOptions(rec.projectId, kind, rec.folderId||'')+
+      '</select></div>'+
+    '<div class="modal-foot"><button class="btn btn-secondary" data-close>Cancel</button>'+
+      '<button class="btn btn-primary" id="mvSave">Move</button></div>'
+  );
+  bindClose();
+  document.getElementById('mvSave').addEventListener('click', function(){
+    put(coll, Object.assign({}, rec, {folderId:val('mvSel')}));
+    closeModal(); toast('Moved'); renderProjectDetail();
+  });
+}
+/* wire folder chrome shared by both tabs; call after each detail render */
+function wireFolderChrome(p){
+  modalBox.querySelectorAll('[data-folder-open]').forEach(function(c){ c.addEventListener('click', function(e){
+    if(e.target.closest('[data-folder-rename],[data-folder-del]')) return;
+    setFolder(c.dataset.kind, c.dataset.folderOpen); renderProjectDetail();
+  }); });
+  modalBox.querySelectorAll('[data-crumb]').forEach(function(c){ c.addEventListener('click', function(){ setFolder(c.dataset.kind, c.dataset.crumb); renderProjectDetail(); }); });
+  modalBox.querySelectorAll('[data-folder-new]').forEach(function(b){ b.addEventListener('click', function(){ newFolder(curProj(), b.dataset.folderNew); }); });
+  modalBox.querySelectorAll('[data-folder-rename]').forEach(function(b){ b.addEventListener('click', function(e){ e.stopPropagation(); renameFolder(state.folders[b.dataset.folderRename]); }); });
+  modalBox.querySelectorAll('[data-folder-del]').forEach(function(b){ b.addEventListener('click', function(e){ e.stopPropagation(); deleteFolder(state.folders[b.dataset.folderDel]); }); });
+  modalBox.querySelectorAll('[data-doc-move]').forEach(function(b){ b.addEventListener('click', function(){ openMoveModal('doc','documents',b.dataset.docMove); }); });
+  modalBox.querySelectorAll('[data-ph-move]').forEach(function(b){ b.addEventListener('click', function(){ openMoveModal('photo','photos',b.dataset.phMove); }); });
 }
 function toggleMilestone(p,i){ var arr=(p.milestones||[]).slice(); if(!arr[i]) return; arr[i]=Object.assign({},arr[i],{done:!arr[i].done}); put('projects', Object.assign({}, p, {milestones:arr})); renderProjectDetail(); }
 function delMilestone(p,i){ var arr=(p.milestones||[]).slice(); arr.splice(i,1); put('projects', Object.assign({}, p, {milestones:arr})); renderProjectDetail(); }
@@ -1007,7 +1147,7 @@ function wireDocUpload(pid){
   ['dragleave','dragend'].forEach(function(ev){ drop.addEventListener(ev, function(){ drop.classList.remove('drag-over'); }); });
   drop.addEventListener('drop', function(e){ e.preventDefault(); drop.classList.remove('drag-over'); handleFiles(e.dataTransfer.files, pid); });
 }
-function handleFiles(files, pid){ Array.prototype.forEach.call(files, function(f){ uploadFile(f, pid, {}); }); }
+function handleFiles(files, pid){ Array.prototype.forEach.call(files, function(f){ uploadFile(f, pid, {folderId:docFolderId}); }); }
 function uploadFile(file, pid, opts){
   opts=opts||{};
   return new Promise(function(resolve, reject){
@@ -1016,14 +1156,14 @@ function uploadFile(file, pid, opts){
       var ref=storage.ref(path);
       toast('<span class="spin"></span> Uploading '+esc(file.name)+'…','',true);
       ref.put(file).then(function(snap){ return snap.ref.getDownloadURL(); }).then(function(url){
-        var doc=put('documents', {id:uid(), projectId:pid, name:file.name, size:file.size, type:file.type, storagePath:path, url:url, source:!!opts.source, docKind:opts.docKind||'', uploadedAt:new Date().toISOString()});
+        var doc=put('documents', {id:uid(), projectId:pid, name:file.name, size:file.size, type:file.type, storagePath:path, url:url, source:!!opts.source, docKind:opts.docKind||'', folderId:opts.folderId||'', uploadedAt:new Date().toISOString()});
         clearToast(); toast('Uploaded '+esc(file.name),'ok'); refreshDocViews(pid); resolve(doc);
       }).catch(function(e){ clearToast(); toast('Upload failed: '+esc(e.message),'err'); reject(e); });
     } else {
       if(file.size>3*1024*1024){ toast('Local mode: file >3MB skipped ('+esc(file.name)+')','err'); reject(new Error('too big')); return; }
       var reader=new FileReader();
       reader.onload=function(){
-        var doc=put('documents', {id:uid(), projectId:pid, name:file.name, size:file.size, type:file.type, dataUrl:reader.result, source:!!opts.source, docKind:opts.docKind||'', uploadedAt:new Date().toISOString()});
+        var doc=put('documents', {id:uid(), projectId:pid, name:file.name, size:file.size, type:file.type, dataUrl:reader.result, source:!!opts.source, docKind:opts.docKind||'', folderId:opts.folderId||'', uploadedAt:new Date().toISOString()});
         toast('Added '+esc(file.name),'ok'); refreshDocViews(pid); resolve(doc);
       };
       reader.onerror=reject; reader.readAsDataURL(file);
@@ -1509,10 +1649,10 @@ document.addEventListener('keydown', function(e){ if(e.key==='Escape') lightbox.
 
 function itemDesc(id){ var it=state.items[id]; return it? (it.description||'') : ''; }
 
-function uploadPhoto(file, pid, itemId, caption){
+function uploadPhoto(file, pid, itemId, caption, folderId){
   return new Promise(function(resolve, reject){
     if(!/^image\//.test(file.type)){ toast('Only image files can be added as photos','err'); reject(new Error('not image')); return; }
-    var meta={ projectId:pid, itemId:itemId||'', caption:caption||'', uploadedAt:new Date().toISOString(),
+    var meta={ projectId:pid, itemId:itemId||'', caption:caption||'', folderId:folderId||'', uploadedAt:new Date().toISOString(),
                uploadedBy: currentUser? (currentUser.name||currentUser.email||'') : '' };
     if(FB_ENABLED && storage){
       var path='pm/projects/'+pid+'/photos/'+Date.now()+'_'+file.name;
@@ -1539,11 +1679,12 @@ function deletePhoto(ph, silent){
   remove('photos', ph.id); if(!silent) toast('Photo deleted');
 }
 
-function photoCardHTML(ph, showItem){
+function photoCardHTML(ph, showItem, allowMove){
   return '<div class="photo-card">'+
     '<img src="'+(ph.url||ph.dataUrl||'')+'" data-ph-open="'+ph.id+'" alt="'+esc(ph.caption||ph.name||'')+'" loading="lazy">'+
     (showItem && ph.itemId? '<span class="photo-item-tag">'+esc(itemDesc(ph.itemId).slice(0,40))+'</span>':'')+
     (canEdit()?'<button class="photo-del" data-ph-del="'+ph.id+'" title="Delete">×</button>':'')+
+    (canEdit()&&allowMove?'<button class="photo-move" data-ph-move="'+ph.id+'" title="Move to folder">📁</button>':'')+
     (ph.caption?'<div class="photo-cap">'+esc(ph.caption)+'</div>':'')+
     '<div class="photo-meta">'+fmtDate((ph.uploadedAt||'').slice(0,10))+(ph.uploadedBy?' • '+esc(ph.uploadedBy):'')+'</div>'+
   '</div>';
@@ -1583,40 +1724,44 @@ function wireProjectPhotoUpload(p){
   var drop=document.getElementById('phDropP'); if(!drop) return;
   var inp=document.getElementById('phInputP');
   var grab=function(){ return { item:(document.getElementById('phItemSel')||{}).value||'', cap:(document.getElementById('phCap')||{}).value||'' }; };
-  var go=function(files){ var g=grab(); addPhotosCap(files, p.id, g.item, g.cap, function(){ renderProjectDetail(); }); };
+  var go=function(files){ var g=grab(); addPhotosCap(files, p.id, g.item, g.cap, photoFolderId, function(){ renderProjectDetail(); }); };
   drop.addEventListener('click', function(){ inp.click(); });
   inp.addEventListener('change', function(){ go(inp.files); });
   ['dragover','dragenter'].forEach(function(ev){ drop.addEventListener(ev,function(e){ e.preventDefault(); drop.classList.add('drag-over'); }); });
   ['dragleave','dragend'].forEach(function(ev){ drop.addEventListener(ev,function(){ drop.classList.remove('drag-over'); }); });
   drop.addEventListener('drop', function(e){ e.preventDefault(); drop.classList.remove('drag-over'); go(e.dataTransfer.files); });
 }
-function addPhotosCap(files, pid, itemId, caption, after){
+function addPhotosCap(files, pid, itemId, caption, folderId, after){
   var list=Array.prototype.slice.call(files);
   (function next(i){
     if(i>=list.length){ if(after) after(); return; }
-    uploadPhoto(list[i], pid, itemId, caption).then(function(){ next(i+1); }).catch(function(){ next(i+1); });
+    uploadPhoto(list[i], pid, itemId, caption, folderId).then(function(){ next(i+1); }).catch(function(){ next(i+1); });
   })(0);
 }
 function addPhotos(files, pid, itemId, after){
   var list=Array.prototype.slice.call(files);
   (function next(i){
     if(i>=list.length){ if(after) after(); return; }
-    uploadPhoto(list[i], pid, itemId, '').then(function(){ next(i+1); }).catch(function(){ next(i+1); });
+    uploadPhoto(list[i], pid, itemId, '', '').then(function(){ next(i+1); }).catch(function(){ next(i+1); });
   })(0);
 }
 
-/* project-level photo tab */
+/* project-level photo tab (folder-navigable) */
 function detailPhotos(p){
-  var phs=projectPhotos(p.id);
+  var cur=photoFolderId;
+  var phs=recordsInFolder('photos',p.id,cur).sort(function(a,b){ return (b.uploadedAt||'')<(a.uploadedAt||'')?-1:1; });
+  var hasSub=subFolders(p.id,'photo',cur).length;
   var opts='<option value="">— not linked to an item —</option>'+projectItems(p.id).map(function(it,i){
     return '<option value="'+it.id+'">'+esc((it.no||(i+1))+'. '+(it.description||'').slice(0,60))+'</option>'; }).join('');
-  return (canEdit()?
+  return folderBar(p,'photo')+folderCrumb(p,'photo')+
+    (canEdit()?
     '<div class="panel"><div class="field" style="margin-bottom:8px"><label>Link photos to item (optional)</label><select id="phItemSel">'+opts+'</select></div>'+
     '<div class="field" style="margin-bottom:8px"><label>Caption (optional)</label><input type="text" id="phCap" placeholder="e.g. Pump installed at wet well"></div>'+
-    '<div class="dropzone" id="phDropP" style="margin-bottom:0">Drop photos here or <b>click to add</b>'+
+    '<div class="dropzone" id="phDropP" style="margin-bottom:0">Drop photos here or <b>click to add</b> into this folder'+
       '<input type="file" id="phInputP" accept="image/*" multiple capture="environment" style="display:none"></div></div>':'')+
-    (phs.length?'<div class="photo-grid">'+phs.map(function(x){return photoCardHTML(x,true);}).join('')+'</div>'
-              :'<div class="empty-state" style="padding:24px 0">No photos yet.</div>');
+    folderCards(p,'photo')+
+    (phs.length?'<div class="photo-grid">'+phs.map(function(x){return photoCardHTML(x,true,true);}).join('')+'</div>'
+              :(hasSub?'':'<div class="empty-state" style="padding:24px 0">No photos in this folder.</div>'));
 }
 
 /* =====================================================================
