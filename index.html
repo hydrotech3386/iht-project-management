@@ -218,6 +218,8 @@ button.btn{padding:8px 16px;border:none;border-radius:6px;cursor:pointer;font-si
 
 /* extract preview */
 .extract-note{background:#231a3a;border:1px solid #3a2a5a;border-radius:9px;padding:10px 12px;font-size:12px;color:#c9b3f2;margin-bottom:12px}
+#exBody tr.no-value td{background:rgba(245,176,65,.08)}
+#exBody tr.no-value td:first-child{box-shadow:inset 3px 0 0 #f5b041}
 
 /* ---------- Photos ---------- */
 .btn-photo{background:#0f3460;border:1px solid #23325a;color:#7a8bb0;border-radius:6px;padding:4px 7px;cursor:pointer;font-size:13px;position:relative;line-height:1}
@@ -995,8 +997,9 @@ function openItemForm(it){
 function openPasteItems(p){
   openModal(
     '<div class="modal-head"><div><h2>Paste Items</h2><div class="sub">One item per line. Optional columns separated by | or tab:</div></div><button class="modal-close" data-close>&times;</button></div>'+
-    '<div class="extract-note">Format per line: <b>Description | Qty | Unit | Rate</b><br>e.g. <code>Supply &amp; install submersible pump | 4 | set | 8500</code> — Qty/Unit/Rate optional.</div>'+
-    '<div class="field full"><textarea id="pasteBox" style="min-height:200px" placeholder="Supply and install submersible pump | 4 | set | 8500&#10;Control panel MSSB | 1 | lot | 22000"></textarea></div>'+
+    '<div class="extract-note">Format per line: <b>Description | Qty | Unit | Rate | Amount</b><br>e.g. <code>Supply &amp; install submersible pump | 4 | set | 8500</code> — Qty/Unit/Rate/Amount all optional. '+
+      'For lump-sum items with only a total (no unit rate), leave Rate blank and put the figure in Amount: <code>Site supervision | 1 | lot | | 4500</code>.</div>'+
+    '<div class="field full"><textarea id="pasteBox" style="min-height:200px" placeholder="Supply and install submersible pump | 4 | set | 8500&#10;Control panel MSSB | 1 | lot | 22000&#10;Site supervision | 1 | lot | | 4500"></textarea></div>'+
     '<div class="modal-foot"><button class="btn btn-secondary" data-close>Cancel</button><button class="btn btn-primary" id="pasteParseBtn">Preview</button></div>'
   );
   bindClose();
@@ -1006,8 +1009,10 @@ function openPasteItems(p){
       var parts=l.split(/\s*[|\t]\s*/);
       var qty=parts[1]!=null&&parts[1]!==''?Number(parts[1].replace(/[^0-9.\-]/g,'')):'';
       var rate=parts[3]!=null&&parts[3]!==''?Number(parts[3].replace(/[^0-9.\-]/g,'')):'';
-      return { description:parts[0]||'', qty:isNaN(qty)?'':qty, unit:parts[2]||'', rate:isNaN(rate)?'':rate,
-        amount:(qty!==''&&rate!==''&&!isNaN(qty)&&!isNaN(rate))?qty*rate:'' };
+      var amountIn=parts[4]!=null&&parts[4]!==''?Number(parts[4].replace(/[^0-9.\-]/g,'')):'';
+      var amount = amountIn!==''&&!isNaN(amountIn) ? amountIn
+                 : (qty!==''&&rate!==''&&!isNaN(qty)&&!isNaN(rate)) ? qty*rate : '';
+      return { description:parts[0]||'', qty:isNaN(qty)?'':qty, unit:parts[2]||'', rate:isNaN(rate)?'':rate, amount:amount };
     }).filter(function(i){ return i.description; });
     if(!items.length){ toast('Nothing to add','err'); return; }
     showExtractPreview(p, items, 'Paste');
@@ -1021,8 +1026,11 @@ function extractItems(p, doc){
     return;
   }
   if(!doc || !doc.storagePath){ toast('No source document to read','err'); return; }
-  toast('<span class="spin"></span> Reading '+esc(doc.name)+' with AI…', '', true);
-  var callable=functions.httpsCallable(EXTRACT_FN);
+  // Big/scanned BQs can take a few minutes. The Firebase callable defaults to a
+  // 70s client timeout, which was cutting long extractions off mid-way; give it
+  // up to 9 minutes to match the (raised) server timeout.
+  toast('<span class="spin"></span> Reading '+esc(doc.name)+' with AI… this can take a few minutes for a large BQ — keep this open.', '', true);
+  var callable=functions.httpsCallable(EXTRACT_FN, { timeout: 540000 });
   callable({ projectId:p.id, storagePath:doc.storagePath, fileName:doc.name })
     .then(function(res){
       clearToast();
@@ -1030,23 +1038,34 @@ function extractItems(p, doc){
       if(!items.length){ toast('No items found in the document','err'); return; }
       showExtractPreview(p, items, 'AI');
     })
-    .catch(function(e){ clearToast(); toast('Extraction failed: '+esc(e.message||e),'err'); });
+    .catch(function(e){
+      clearToast();
+      var code=e&&e.code||'';
+      if(code==='deadline-exceeded' || /deadline/i.test(e.message||''))
+        toast('The document was too large to finish in time. Try splitting the BQ into fewer pages, or use Paste items.','err');
+      else toast('Extraction failed: '+esc(e.message||e),'err');
+    });
 }
 function showExtractPreview(p, items, sourceLabel){
   var money=canSeePrice();
+  var noValueCount=items.filter(function(it){ return (it.amount==null||it.amount==='') && !((it.qty!=null&&it.qty!=='')&&(it.rate!=null&&it.rate!=='')); }).length;
   var rows=items.map(function(it,i){
-    return '<tr data-row="'+i+'">'+
+    var inp=function(w){ return 'style="width:'+w+'px;background:#0f3460;border:1px solid #23325a;color:#fff;border-radius:6px;padding:6px;text-align:right"'; };
+    var amt=(it.amount!=null&&it.amount!=='')? it.amount : ((it.qty!=null&&it.qty!==''&&it.rate!=null&&it.rate!=='')? round2(it.qty*it.rate) : '');
+    return '<tr data-row="'+i+'"'+(amt===''?' class="no-value"':'')+'>'+
       '<td><input type="text" data-f="description" value="'+esc(it.description||'')+'" style="width:100%;background:#0f3460;border:1px solid #23325a;color:#fff;border-radius:6px;padding:6px"></td>'+
-      '<td><input type="number" data-f="qty" value="'+(it.qty==null?'':it.qty)+'" style="width:70px;background:#0f3460;border:1px solid #23325a;color:#fff;border-radius:6px;padding:6px;text-align:right"></td>'+
-      '<td><input type="text" data-f="unit" value="'+esc(it.unit||'')+'" style="width:70px;background:#0f3460;border:1px solid #23325a;color:#fff;border-radius:6px;padding:6px"></td>'+
-      (money?'<td><input type="number" data-f="rate" value="'+(it.rate==null?'':it.rate)+'" style="width:90px;background:#0f3460;border:1px solid #23325a;color:#fff;border-radius:6px;padding:6px;text-align:right"></td>'
-            :'<td><input type="hidden" data-f="rate" value="'+(it.rate==null?'':it.rate)+'"></td>')+
+      '<td><input type="number" data-f="qty" value="'+(it.qty==null?'':it.qty)+'" '+inp(66)+'></td>'+
+      '<td><input type="text" data-f="unit" value="'+esc(it.unit||'')+'" style="width:60px;background:#0f3460;border:1px solid #23325a;color:#fff;border-radius:6px;padding:6px"></td>'+
+      (money?
+        '<td><input type="number" data-f="rate" value="'+(it.rate==null?'':it.rate)+'" '+inp(82)+'></td>'+
+        '<td><input type="number" data-f="amount" value="'+amt+'" '+inp(96)+' title="Line total — taken from the document; edit if it looks wrong"></td>'
+        :'<td><input type="hidden" data-f="rate" value="'+(it.rate==null?'':it.rate)+'"><input type="hidden" data-f="amount" value="'+amt+'"></td>')+
       '<td><button class="btn btn-danger btn-sm" data-drop="'+i+'">×</button></td></tr>';
   }).join('');
   openModal(
     '<div class="modal-head"><div><h2>Review Extracted Items</h2><div class="sub">'+items.length+' items from '+esc(sourceLabel)+' — edit or remove, then add.</div></div><button class="modal-close" data-close>&times;</button></div>'+
-    '<div class="extract-note">Check the descriptions and quantities against the original before adding.'+(money?' Values auto-calc from Qty × Rate.':'')+'</div>'+
-    '<div style="max-height:52vh;overflow:auto"><table class="item-table"><thead><tr><th>Description</th><th>Qty</th><th>Unit</th>'+(money?'<th>Rate</th>':'')+'<th></th></tr></thead><tbody id="exBody">'+rows+'</tbody></table></div>'+
+    '<div class="extract-note">Amount is read directly from the document\'s Amount/Total column, independent of Rate — a blank Rate with a filled Amount is normal for lump-sum items. Check the highlighted rows'+(noValueCount?' ('+noValueCount+' with no value found)':'')+' — that usually means the source genuinely has no price there.</div>'+
+    '<div style="max-height:52vh;overflow:auto"><table class="item-table"><thead><tr><th>Description</th><th>Qty</th><th>Unit</th>'+(money?'<th>Rate</th><th>Amount</th>':'')+'<th></th></tr></thead><tbody id="exBody">'+rows+'</tbody></table></div>'+
     '<div class="modal-foot"><button class="btn btn-secondary" data-close>Cancel</button><button class="btn btn-add" id="exAddBtn">Add '+items.length+' Items</button></div>', true
   );
   bindClose();
@@ -1057,8 +1076,10 @@ function showExtractPreview(p, items, sourceLabel){
       var g=function(f){ var e=tr.querySelector('[data-f="'+f+'"]'); return e?e.value.trim():''; };
       var desc=g('description'); if(!desc) return;
       var qty=g('qty')===''?'':Number(g('qty')); var rate=g('rate')===''?'':Number(g('rate'));
+      // amount comes from the document/review edit; only fall back to qty*rate if it was never given
+      var amount=g('amount')===''? ((qty!==''&&rate!=='')?qty*rate:'') : Number(g('amount'));
       put('items', { id:uid(), projectId:p.id, description:desc, qty:qty, unit:g('unit'), rate:rate,
-        amount:(qty!==''&&rate!=='')?qty*rate:'', percent:0, order:ord++, createdAt:Date.now() });
+        amount:amount, percent:0, order:ord++, createdAt:Date.now() });
       n++;
     });
     closeModal(); toast(n+' items added','ok'); if(detailProjId) renderProjectDetail(); else renderCurrent();

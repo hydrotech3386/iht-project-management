@@ -19,15 +19,18 @@ const MAX_BYTES = 20 * 1024 * 1024; // Anthropic caps document/image payloads
 const SYSTEM_PROMPT = `You extract the scope-of-work line items from construction and M&E procurement documents (Purchase Orders, Bills of Quantities, Quotations) for a Malaysian water/wastewater engineering company.
 
 Return ONLY a JSON object of this exact shape:
-{"items":[{"description":string,"qty":number|null,"unit":string,"rate":number|null,"section":string}]}
+{"items":[{"description":string,"qty":number|null,"unit":string,"rate":number|null,"amount":number|null,"section":string}]}
 
 Rules:
 - One entry per priced/scoped line item, in document order.
 - "description" is the work/material description, cleaned of leading numbering. Keep it specific (e.g. "Supply and install 5.5kW submersible pump").
 - "qty" is the quantity as a number (null if absent). "unit" is the unit of measure ("set","nos","lot","m","m2", etc; "" if absent).
-- "rate" is the UNIT rate in RM as a number (null if absent). Never invent it. Strip currency symbols and thousands separators.
-- "section" is the heading/trade the item sits under (e.g. "Mechanical Works", "Preliminaries"); "" if none.
-- SKIP: section headers with no quantity/price of their own, subtotals, totals, grand totals, SST/GST/tax lines, discounts, page headers/footers, terms & conditions, and any commentary.
+- "rate" is the UNIT rate in RM as a number, ONLY if a separate rate/unit-price figure is actually printed for that line. Leave it null if the document shows no rate column value for that row — do not compute or infer it.
+- "amount" is the line TOTAL in RM, taken directly from an "Amount"/"Total"/"Total Amount" column if the document prints one for that row. This is very often present even when "rate" is blank (common for lump-sum "L/S"/"lot" items, or BQs that only show a rate once for a group of rows but print the amount per row). Extract "amount" independently of "rate" — never assume amount = qty × rate, read what is actually printed. Leave null only if truly no figure is shown for that row.
+- If a cell literally says "N/A", "TBA", "included", "by others" or is blank, that field is null — do not invent a number.
+- Never strip decimals: read exactly what is printed (e.g. 25.7, 44.8) — quantities are frequently non-integer.
+- "section" is the heading/trade the item sits under (e.g. "Mechanical Works", "Primary Screen - Inlet Chamber"); "" if none. Use the most specific sub-heading, not just the top-level one.
+- SKIP: section headers with no quantity/price of their own, subtotals, "TOTAL AMOUNT" carry-forward/brought-forward rows, grand totals, SST/GST/tax lines, discounts, page headers/footers, terms & conditions, and any commentary. Also skip "Previous Claim"/"This Claim"/"Total Claim" columns if the document has them — those are claim-tracking columns, not part of scope extraction.
 - If a line is a provisional/PC sum, keep it as an item.
 - If the document has no identifiable line items, return {"items":[]}.
 Output raw JSON only — no markdown fences, no explanation.`;
@@ -73,7 +76,7 @@ exports.extractItems = onCall(
   {
     region: 'asia-southeast1',
     secrets: [ANTHROPIC_API_KEY],
-    timeoutSeconds: 300,
+    timeoutSeconds: 540,   // large scanned BQs can take 3-4 min for the model
     memory: '1GiB',
     cors: true
   },
@@ -180,6 +183,7 @@ exports.extractItems = onCall(
         qty: num(it.qty),
         unit: String(it.unit || '').trim(),
         rate: num(it.rate),
+        amount: num(it.amount),   // taken directly from the document, NOT derived from qty*rate
         section: String(it.section || '').trim()
       }))
       .filter(it => it.description);
