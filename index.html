@@ -816,7 +816,7 @@ function detailItems(p){
       its.map(function(it,idx){
         var pct=Number(it.percent)||0; var np=itemPhotos(it.id).length;
         return '<tr data-item="'+it.id+'">'+
-          '<td class="num-col">'+esc(it.no||(idx+1))+'</td>'+
+          '<td class="num-col">'+(it.no?esc(it.no):'<span style="color:#5a6785" title="No item number set">—</span>')+'</td>'+
           '<td class="item-desc">'+esc(it.description||'')+(it.section?'<div style="font-size:11px;color:#4fc3f7">'+esc(it.section)+'</div>':'')+'</td>'+
           '<td class="num-col">'+(it.qty!=null&&it.qty!==''?fmtNum(it.qty):'')+'</td>'+
           '<td>'+esc(it.unit||'')+'</td>'+
@@ -1103,17 +1103,36 @@ function looseNumEq(a,b){
 }
 /* best match for `li` among `fresh`, or null if not confident enough —
    same bar used when this matching was done by hand for live data before */
-function bestFreshMatch(li, fresh){
-  var scored=fresh.map(function(fr){
-    var score=jaccardSim(li.description, fr.description);
-    if(looseNumEq(li.qty, fr.qty)) score+=0.08;
-    if((li.unit||'').toLowerCase().trim()===(fr.unit||'').toLowerCase().trim() && li.unit) score+=0.04;
-    return { fr:fr, score:score };
-  }).sort(function(a,b){ return b.score-a.score; });
-  var best=scored[0], runnerUp=scored[1];
-  if(!best || best.score<0.55) return null;
-  if(runnerUp && (best.score-runnerUp.score)<0.10) return null;
-  return best.fr;
+/* Match every existing item to a fresh extracted row, as a GREEDY BIPARTITE
+   assignment rather than each item picking independently. Independent
+   picking breaks on BQs with near-duplicate wording in different sections
+   (e.g. "13A switch socket" appearing under both Pump House and Guard
+   House) — two existing items would both claim the same fresh row as their
+   "best match" and the loser gets nothing, even though the real pairing was
+   resolvable. Scoring by document position first, THEN taking highest-score
+   pairs globally (each side used at most once) picks the right one because
+   the two near-duplicates sit in different parts of the document. */
+function matchExistingToFresh(existing, fresh){
+  var n=existing.length, m=fresh.length;
+  var candidates=[];
+  existing.forEach(function(li, liIdx){
+    var liPos = n>1 ? liIdx/(n-1) : 0;
+    fresh.forEach(function(fr, frIdx){
+      var score=jaccardSim(li.description, fr.description);
+      if(looseNumEq(li.qty, fr.qty)) score+=0.08;
+      if((li.unit||'').toLowerCase().trim()===(fr.unit||'').toLowerCase().trim() && li.unit) score+=0.04;
+      var frPos = m>1 ? frIdx/(m-1) : 0;
+      score += 0.15*(1-Math.abs(liPos-frPos));   // same-ish place in the document
+      if(score>=0.55) candidates.push({ liIdx:liIdx, frIdx:frIdx, score:score });
+    });
+  });
+  candidates.sort(function(a,b){ return b.score-a.score; });
+  var usedLi={}, usedFr={}, result=new Array(n).fill(null);
+  candidates.forEach(function(c){
+    if(usedLi[c.liIdx] || usedFr[c.frIdx]) return;
+    result[c.liIdx]=fresh[c.frIdx]; usedLi[c.liIdx]=true; usedFr[c.frIdx]=true;
+  });
+  return result;
 }
 function readExtractRows(){
   var out=[];
@@ -1163,9 +1182,10 @@ function showExtractPreview(p, items, sourceLabel){
     var fresh=readExtractRows();
     if(!fresh.length){ toast('Nothing to match — the table is empty','err'); return; }
     if(!confirm('Match these '+fresh.length+' extracted rows to your '+existing.length+' existing item(s) by description, and set their Item No. only. Quantities, rates, values, % complete and everything else stay exactly as they are. Continue?')) return;
+    var matches=matchExistingToFresh(existing, fresh);
     var updated=0, unchanged=0, unresolved=0;
-    existing.forEach(function(li){
-      var match=bestFreshMatch(li, fresh);
+    existing.forEach(function(li, i){
+      var match=matches[i];
       if(!match || !match.no){ unresolved++; return; }
       if(li.no===match.no){ unchanged++; return; }
       put('items', Object.assign({}, li, {no:match.no}));
@@ -1508,7 +1528,7 @@ function claimTableHTML(lines, t, forPrint){
     '<thead><tr><th>No.</th><th>Description</th><th>Unit</th><th class="num-col">Qty</th><th class="amt">Contract (RM)</th>'+
     '<th class="amt">Prev %</th><th class="amt">To Date %</th><th class="amt">Value To Date</th><th class="amt">This Claim</th></tr></thead><tbody>'+
     lines.map(function(l,i){
-      return '<tr><td>'+esc(l.item.no||(i+1))+'</td><td>'+esc(l.item.description||'')+'</td>'+
+      return '<tr><td>'+esc(l.item.no||'')+'</td><td>'+esc(l.item.description||'')+'</td>'+
         '<td>'+esc(l.item.unit||'')+'</td><td class="num-col">'+(l.item.qty!==''&&l.item.qty!=null?fmtNum(l.item.qty):'')+'</td>'+
         '<td class="amt">'+fmtNum(l.value)+'</td>'+
         '<td class="amt">'+l.prevPct+'%</td><td class="amt">'+l.thisPct+'%</td>'+
@@ -1705,7 +1725,7 @@ function exportClaimExcel(c){
   lines.forEach(function(l,i){
     var qty=(l.item.qty===''||l.item.qty==null)?'':Number(l.item.qty);
     rows.push(xlRow([
-      {v:(l.item.no||i+1),s:'i0'},
+      {v:(l.item.no||''),s:'i0',t:'String'},
       {v:l.item.description||'',s:'txt'},
       {v:l.item.unit||'',s:'txt'},
       {v:qty,s:'i0'},
@@ -1883,7 +1903,7 @@ function detailPhotos(p){
   var phs=recordsInFolder('photos',p.id,cur).sort(function(a,b){ return (b.uploadedAt||'')<(a.uploadedAt||'')?-1:1; });
   var hasSub=subFolders(p.id,'photo',cur).length;
   var opts='<option value="">— not linked to an item —</option>'+projectItems(p.id).map(function(it,i){
-    return '<option value="'+it.id+'">'+esc((it.no||(i+1))+'. '+(it.description||'').slice(0,60))+'</option>'; }).join('');
+    return '<option value="'+it.id+'">'+esc((it.no?it.no+'. ':'')+(it.description||'').slice(0,60))+'</option>'; }).join('');
   return folderBar(p,'photo')+folderCrumb(p,'photo')+
     (canEdit()?
     '<div class="panel"><div class="field" style="margin-bottom:8px"><label>Link photos to item (optional)</label><select id="phItemSel">'+opts+'</select></div>'+
