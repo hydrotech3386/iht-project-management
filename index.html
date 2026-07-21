@@ -1087,8 +1087,49 @@ function extractItems(p, doc){
       else toast('Extraction failed: '+esc(e.message||e),'err');
     });
 }
+/* ---- description matching, used to line up a fresh extraction against
+   items that already exist (e.g. re-extracting just to backfill numbers) ---- */
+function wordsSet(s){ return new Set((s||'').toLowerCase().replace(/[^a-z0-9]+/g,' ').trim().split(' ').filter(function(w){ return w.length>2; })); }
+function jaccardSim(a,b){
+  var A=wordsSet(a), B=wordsSet(b);
+  if(!A.size || !B.size) return 0;
+  var inter=0; A.forEach(function(w){ if(B.has(w)) inter++; });
+  return inter/(A.size+B.size-inter);
+}
+function looseNumEq(a,b){
+  if(a===''||a==null) return b===''||b==null;
+  if(b===''||b==null) return false;
+  return Math.abs(Number(a)-Number(b))<0.01;
+}
+/* best match for `li` among `fresh`, or null if not confident enough —
+   same bar used when this matching was done by hand for live data before */
+function bestFreshMatch(li, fresh){
+  var scored=fresh.map(function(fr){
+    var score=jaccardSim(li.description, fr.description);
+    if(looseNumEq(li.qty, fr.qty)) score+=0.08;
+    if((li.unit||'').toLowerCase().trim()===(fr.unit||'').toLowerCase().trim() && li.unit) score+=0.04;
+    return { fr:fr, score:score };
+  }).sort(function(a,b){ return b.score-a.score; });
+  var best=scored[0], runnerUp=scored[1];
+  if(!best || best.score<0.55) return null;
+  if(runnerUp && (best.score-runnerUp.score)<0.10) return null;
+  return best.fr;
+}
+function readExtractRows(){
+  var out=[];
+  modalBox.querySelectorAll('#exBody tr').forEach(function(tr){
+    var g=function(f){ var e=tr.querySelector('[data-f="'+f+'"]'); return e?e.value.trim():''; };
+    var desc=g('description'); if(!desc) return;
+    var qty=g('qty')===''?'':Number(g('qty')); var rate=g('rate')===''?'':Number(g('rate'));
+    var amount=g('amount')===''? ((qty!==''&&rate!=='')?qty*rate:'') : Number(g('amount'));
+    out.push({ no:g('no'), description:desc, qty:qty, unit:g('unit'), rate:rate, amount:amount });
+  });
+  return out;
+}
+
 function showExtractPreview(p, items, sourceLabel){
   var money=canSeePrice();
+  var existing=projectItems(p.id);
   var noValueCount=items.filter(function(it){ return (it.amount==null||it.amount==='') && !((it.qty!=null&&it.qty!=='')&&(it.rate!=null&&it.rate!=='')); }).length;
   var rows=items.map(function(it,i){
     var inp=function(w){ return 'style="width:'+w+'px;background:#0f3460;border:1px solid #23325a;color:#fff;border-radius:6px;padding:6px;text-align:right"'; };
@@ -1105,14 +1146,40 @@ function showExtractPreview(p, items, sourceLabel){
       '<td><button class="btn btn-danger btn-sm" data-drop="'+i+'">×</button></td></tr>';
   }).join('');
   openModal(
-    '<div class="modal-head"><div><h2>Review Extracted Items</h2><div class="sub">'+items.length+' items from '+esc(sourceLabel)+' — edit or remove, then add.</div></div><button class="modal-close" data-close>&times;</button></div>'+
-    '<div class="extract-note">No. is the item number as printed in the document, so it lines up with the BQ/PO/quotation. Amount is read directly from the document\'s Amount/Total column, independent of Rate — a blank Rate with a filled Amount is normal for lump-sum items. Check the highlighted rows'+(noValueCount?' ('+noValueCount+' with no value found)':'')+' — that usually means the source genuinely has no price there.</div>'+
+    '<div class="modal-head"><div><h2>Review Extracted Items</h2><div class="sub">'+items.length+' items from '+esc(sourceLabel)+' — edit or remove, then choose an action below.</div></div><button class="modal-close" data-close>&times;</button></div>'+
+    '<div class="extract-note">No. is the item number as printed in the document, so it lines up with the BQ/PO/quotation. Amount is read directly from the document\'s Amount/Total column, independent of Rate — a blank Rate with a filled Amount is normal for lump-sum items. Check the highlighted rows'+(noValueCount?' ('+noValueCount+' with no value found)':'')+' — that usually means the source genuinely has no price there.'+
+      (existing.length? '<br><br><b>This project already has '+existing.length+' item(s).</b> Use <b>Update Item Numbers</b> to backfill numbers on those without creating duplicates — it matches by description and only touches the No. field, nothing else. Use <b>Add as New Items</b> only if this document is genuinely additional scope.' : '')+
+      '</div>'+
     '<div style="max-height:52vh;overflow:auto"><table class="item-table"><thead><tr><th>No.</th><th>Description</th><th>Qty</th><th>Unit</th>'+(money?'<th>Rate</th><th>Amount</th>':'')+'<th></th></tr></thead><tbody id="exBody">'+rows+'</tbody></table></div>'+
-    '<div class="modal-foot"><button class="btn btn-secondary" data-close>Cancel</button><button class="btn btn-add" id="exAddBtn">Add '+items.length+' Items</button></div>', true
+    '<div class="modal-foot"><button class="btn btn-secondary" data-close>Cancel</button>'+
+      (existing.length? '<button class="btn btn-primary" id="exUpdateNoBtn">Update Item Numbers on '+existing.length+' Existing Item(s)</button>':'')+
+      '<button class="btn'+(existing.length?' btn-secondary':' btn-add')+'" id="exAddBtn">Add as '+items.length+' New Item(s)</button></div>', true
   );
   bindClose();
   modalBox.querySelectorAll('[data-drop]').forEach(function(b){ b.addEventListener('click', function(){ var tr=b.closest('tr'); tr.parentNode.removeChild(tr); }); });
+
+  var updBtn=document.getElementById('exUpdateNoBtn');
+  if(updBtn) updBtn.addEventListener('click', function(){
+    var fresh=readExtractRows();
+    if(!fresh.length){ toast('Nothing to match — the table is empty','err'); return; }
+    if(!confirm('Match these '+fresh.length+' extracted rows to your '+existing.length+' existing item(s) by description, and set their Item No. only. Quantities, rates, values, % complete and everything else stay exactly as they are. Continue?')) return;
+    var updated=0, unchanged=0, unresolved=0;
+    existing.forEach(function(li){
+      var match=bestFreshMatch(li, fresh);
+      if(!match || !match.no){ unresolved++; return; }
+      if(li.no===match.no){ unchanged++; return; }
+      put('items', Object.assign({}, li, {no:match.no}));
+      updated++;
+    });
+    closeModal();
+    toast('Updated numbers on '+updated+' item(s)'+
+      (unchanged?', '+unchanged+' already correct':'')+
+      (unresolved?', '+unresolved+' had no confident match — check those manually':''), 'ok');
+    if(detailProjId) renderProjectDetail(); else renderCurrent();
+  });
+
   document.getElementById('exAddBtn').addEventListener('click', function(){
+    if(existing.length && !confirm('This project already has '+existing.length+' item(s). Adding these '+items.length+' will create NEW items alongside them — if you meant to backfill numbers on the existing ones, use "Update Item Numbers" instead. Add as new items anyway?')) return;
     var trs=modalBox.querySelectorAll('#exBody tr'); var ord=nextItemOrder(p.id); var n=0;
     trs.forEach(function(tr){
       var g=function(f){ var e=tr.querySelector('[data-f="'+f+'"]'); return e?e.value.trim():''; };
@@ -1124,7 +1191,7 @@ function showExtractPreview(p, items, sourceLabel){
         amount:amount, percent:0, order:ord++, createdAt:Date.now() });
       n++;
     });
-    closeModal(); toast(n+' items added','ok'); if(detailProjId) renderProjectDetail(); else renderCurrent();
+    closeModal(); toast(n+' item(s) added','ok'); if(detailProjId) renderProjectDetail(); else renderCurrent();
   });
 }
 
