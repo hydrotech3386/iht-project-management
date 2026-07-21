@@ -32,6 +32,43 @@ Rules:
 - If the document has no identifiable line items, return {"items":[]}.
 Output raw JSON only — no markdown fences, no explanation.`;
 
+/* Parse the model's JSON, tolerating code fences and — if the output was cut
+   off at max_tokens — a truncated final object. Returns {items:[...]} or null. */
+function parseItemsLoose(text) {
+  const cleaned = text.replace(/^```(?:json)?\s*/i, '').replace(/```\s*$/, '').trim();
+  // 1. straight parse of the outermost object
+  const start = cleaned.indexOf('{');
+  if (start < 0) return null;
+  const end = cleaned.lastIndexOf('}');
+  if (end > start) {
+    try { return JSON.parse(cleaned.slice(start, end + 1)); } catch (e) { /* fall through */ }
+  }
+  // 2. salvage: grab the items array and keep only the complete {...} objects
+  const arrStart = cleaned.indexOf('[', cleaned.indexOf('"items"') >= 0 ? cleaned.indexOf('"items"') : 0);
+  if (arrStart < 0) return null;
+  const objs = [];
+  let depth = 0, objStart = -1, inStr = false, esc = false;
+  for (let i = arrStart + 1; i < cleaned.length; i++) {
+    const ch = cleaned[i];
+    if (inStr) {
+      if (esc) esc = false;
+      else if (ch === '\\') esc = true;
+      else if (ch === '"') inStr = false;
+      continue;
+    }
+    if (ch === '"') { inStr = true; continue; }
+    if (ch === '{') { if (depth === 0) objStart = i; depth++; }
+    else if (ch === '}') {
+      depth--;
+      if (depth === 0 && objStart >= 0) {
+        try { objs.push(JSON.parse(cleaned.slice(objStart, i + 1))); } catch (e) { /* skip broken */ }
+        objStart = -1;
+      }
+    } else if (ch === ']' && depth === 0) break;
+  }
+  return objs.length ? { items: objs } : null;
+}
+
 exports.extractItems = onCall(
   {
     region: 'asia-southeast1',
@@ -95,7 +132,7 @@ exports.extractItems = onCall(
         },
         body: JSON.stringify({
           model: MODEL,
-          max_tokens: 8000,
+          max_tokens: 32000,   // large BQs can have 60+ items; 8000 truncated some
           system: SYSTEM_PROMPT,
           messages: [{
             role: 'user',
@@ -121,16 +158,14 @@ exports.extractItems = onCall(
 
     const data = await res.json();
     const text = (data.content || []).filter(c => c.type === 'text').map(c => c.text).join('').trim();
+    if (data.stop_reason === 'max_tokens') {
+      console.warn('response hit max_tokens — will attempt to salvage complete items');
+    }
 
-    // ---- parse, tolerating stray fences ----
-    let parsed;
-    try {
-      const cleaned = text.replace(/^```(?:json)?\s*/i, '').replace(/```\s*$/, '').trim();
-      const start = cleaned.indexOf('{');
-      const end = cleaned.lastIndexOf('}');
-      parsed = JSON.parse(start >= 0 ? cleaned.slice(start, end + 1) : cleaned);
-    } catch (e) {
-      console.error('parse failed. raw:', text.slice(0, 800));
+    // ---- parse, tolerating fences and a truncated tail ----
+    let parsed = parseItemsLoose(text);
+    if (!parsed) {
+      console.error('parse failed. stop_reason:', data.stop_reason, 'raw head:', text.slice(0, 500), 'raw tail:', text.slice(-500));
       throw new HttpsError('internal', 'The AI response could not be read. Try again.');
     }
 

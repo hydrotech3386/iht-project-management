@@ -361,18 +361,33 @@ function fmtNum(n){ n=Number(n)||0; return n.toLocaleString('en-MY',{maximumFrac
 function daysUntil(d){ if(!d) return null; return Math.round((new Date(d) - new Date(todayISO()))/86400000); }
 /* Roles:
      admin    — everything, including money, claims and user management
-     engineer — Project Engineer: full editing of projects/items/photos,
+     engineer — Project Engineer: full editing of ALL projects/items/photos,
                 but NEVER sees rates, values or claims
+     salesman — sees ONLY the projects assigned to them, but sees everything
+                on those (prices, claims) and can upload docs/photos/edit them
      pending  — signed in but not yet granted access by an admin            */
-function hasAccess(){ return currentUser && (currentUser.role==='admin' || currentUser.role==='engineer'); }
+function hasAccess(){ return currentUser && (currentUser.role==='admin' || currentUser.role==='engineer' || currentUser.role==='salesman'); }
 function canEdit(){ return hasAccess(); }
 function isAdmin(){ return currentUser && currentUser.role==='admin'; }
 function isEngineer(){ return currentUser && currentUser.role==='engineer'; }
-/* money is admin-only — engineers are deliberately blind to it */
-function canSeePrice(){ return currentUser && currentUser.role==='admin'; }
-var ROLES = [['admin','Admin'],['engineer','Project Engineer'],['pending','No access']];
+function isSalesman(){ return currentUser && currentUser.role==='salesman'; }
+/* money: admins see all; salesmen see it on their own projects; engineers never */
+function canSeePrice(){ return currentUser && (currentUser.role==='admin' || currentUser.role==='salesman'); }
+/* only admins create projects and assign a salesman */
+function canCreateProjects(){ return currentUser && (currentUser.role==='admin' || currentUser.role==='engineer'); }
+/* a salesman is scoped to projects assigned to their uid; everyone else sees all */
+function canSeeProject(p){
+  if(!p) return false;
+  if(!isSalesman()) return true;
+  return p.salesmanId === currentUser.uid;
+}
+function visibleProjectIds(){
+  var s={}; Object.values(state.projects).forEach(function(p){ if(canSeeProject(p)) s[p.id]=1; }); return s;
+}
+var ROLES = [['admin','Admin'],['engineer','Project Engineer'],['salesman','Salesman'],['pending','No access']];
 function roleLabel(r){ var f=ROLES.filter(function(x){return x[0]===r;})[0]; return f?f[1]:'No access'; }
 function userLabel(u){ return (u && (u.name || (u.email||'').split('@')[0])) || '—'; }
+function salesmen(){ return Object.values(state.users).filter(function(u){ return u.role==='salesman'; }); }
 
 var toastEl = document.getElementById('toast'), toastTimer;
 function toast(msg, kind, sticky){
@@ -457,9 +472,11 @@ function projectProgress(p){
 function statusClass(s){ return 'status-'+(s||'planning').replace(/\s+/g,'-'); }
 function statusLabel(s){ return (s||'planning').replace(/-/g,' ').replace(/\b\w/g,function(c){return c.toUpperCase();}); }
 function projName(pid){ var p=state.projects[pid]; return p?p.name:'—'; }
+/* only the projects the current user is allowed to see (salesmen are scoped
+   to their own); every project list, dropdown and dashboard flows through here */
 function sortedProjects(){
   var order={'in-progress':0,'delayed':1,'planning':2,'on-hold':3,'completed':4};
-  return Object.values(state.projects).sort(function(a,b){
+  return Object.values(state.projects).filter(canSeeProject).sort(function(a,b){
     var d=(order[a.status]==null?9:order[a.status])-(order[b.status]==null?9:order[b.status]); if(d) return d;
     return (a.name||'').localeCompare(b.name||'');
   });
@@ -470,11 +487,12 @@ function sortedProjects(){
    ===================================================================== */
 function renderDashboard(){
   var el=document.getElementById('view-dashboard');
-  var projs=Object.values(state.projects);
+  var projs=sortedProjects();                       // already scoped to what this user may see
+  var visIds=visibleProjectIds();
   var active=projs.filter(function(p){ return p.status!=='completed'; });
   var delayed=projs.filter(function(p){ return p.status==='delayed'; });
   var overdue=active.filter(function(p){ return p.endDate && daysUntil(p.endDate)<0; });
-  var allItems=Object.values(state.items);
+  var allItems=Object.values(state.items).filter(function(it){ return visIds[it.projectId]; });
   var openItems=allItems.filter(function(it){ return (Number(it.percent)||0)<100; });
   var avg = active.length ? Math.round(active.reduce(function(s,p){ return s+projectProgress(p); },0)/active.length) : 0;
 
@@ -526,7 +544,7 @@ function renderProjects(){
       '<select id="projFilterSel">' + ['all','planning','in-progress','delayed','on-hold','completed'].map(function(s){
         return '<option value="'+s+'"'+(projFilter===s?' selected':'')+'>'+(s==='all'?'All statuses':statusLabel(s))+'</option>'; }).join('') + '</select>' +
       '<input type="search" id="projSearch" placeholder="Search projects…">' +
-      '<button class="btn btn-add spacer edit-only" id="addProjBtn">+ New Project</button>' +
+      (canCreateProjects()?'<button class="btn btn-add spacer edit-only" id="addProjBtn">+ New Project</button>':'') +
     '</div>' +
     '<div class="project-grid" id="projGrid"></div>';
   document.getElementById('projFilterSel').addEventListener('change', function(){ projFilter=this.value; renderProjectGrid(); });
@@ -542,7 +560,9 @@ function renderProjectGrid(){
     if(q && !((p.name||'')+' '+(p.client||'')+' '+(p.site||'')).toLowerCase().includes(q)) return false;
     return true;
   });
-  if(!list.length){ grid.innerHTML='<div class="empty-state">No projects yet. Click “+ New Project” to add one.</div>'; return; }
+  if(!list.length){ grid.innerHTML='<div class="empty-state">'+
+    (isSalesman()?'No projects have been assigned to you yet.'
+                 :'No projects yet. Click “+ New Project” to add one.')+'</div>'; return; }
   grid.innerHTML=list.map(function(p){
     var prog=projectProgress(p); var its=projectItems(p.id);
     var done=its.filter(function(t){ return (Number(t.percent)||0)>=100; }).length;
@@ -558,6 +578,7 @@ function renderProjectGrid(){
         (its.length?'<span class="chip">☑ '+its.length+' items</span>':'<span class="chip">no items yet</span>')+
         (cv&&canSeePrice()?'<span class="chip">'+fmtRM(cv)+'</span>':'')+
         (projectDocs(p.id).length?'<span class="chip">▤ '+projectDocs(p.id).length+'</span>':'')+
+        (!isSalesman()&&p.salesmanName?'<span class="chip">👤 '+esc(p.salesmanName)+'</span>':'')+
       '</div></div>';
   }).join('');
   grid.querySelectorAll('.project-card').forEach(function(c){ c.addEventListener('click', function(){ openProjectDetail(c.dataset.id); }); });
@@ -576,6 +597,10 @@ function openProjectForm(p){
       field('Site / Location','pfSite',p.site)+
       field('Start Date','pfStart',p.startDate,'date')+
       field('End Date','pfEnd',p.endDate,'date')+
+      (isAdmin()? '<div class="field"><label>Salesman</label><select id="pfSalesman">'+
+        '<option value="">— unassigned —</option>'+
+        salesmen().map(function(u){ return '<option value="'+u.id+'"'+(p.salesmanId===u.id?' selected':'')+'>'+esc(userLabel(u))+'</option>'; }).join('')+
+        '</select></div>' : '')+
       selField('Progress Mode','pfMode',[['auto','Auto (weighted from items)'],['manual','Manual %']],p.progressMode||'auto')+
       '<div class="field" id="manualProgWrap" style="'+((p.progressMode==='manual')?'':'display:none')+'">'+
         '<label>Manual Progress</label><div class="range"><input type="range" id="pfProgress" min="0" max="100" value="'+(Number(p.progress)||0)+'"><span class="val" id="pfProgVal">'+(Number(p.progress)||0)+'%</span></div></div>'+
@@ -601,9 +626,13 @@ function openProjectForm(p){
   }
   document.getElementById('saveProjBtn').addEventListener('click', function(){
     var name=val('pfName').trim(); if(!name){ toast('Project name required','err'); return; }
+    // salesman assignment is admin-only; non-admins keep whatever was already set
+    var salesmanId = isAdmin() ? val('pfSalesman') : (p.salesmanId||'');
+    var smUser = salesmanId ? state.users[salesmanId] : null;
     var obj=Object.assign({}, p, {
       id:p.id, name:name, status:val('pfStatus'), client:val('pfClient').trim(), site:val('pfSite').trim(),
       startDate:val('pfStart'), endDate:val('pfEnd'), progressMode:val('pfMode'),
+      salesmanId:salesmanId, salesmanName: smUser? userLabel(smUser) : (salesmanId? (p.salesmanName||'') : ''),
       progress:Number((document.getElementById('pfProgress')||{}).value||p.progress||0), notes:val('pfNotes').trim(),
       createdAt:p.createdAt||Date.now()
     });
@@ -627,7 +656,11 @@ function openProjectForm(p){
 
 /* ---------- project detail ---------- */
 var detailTab='overview', detailProjId=null;
-function openProjectDetail(id, tab){ var p=state.projects[id]; if(!p) return; detailProjId=id; detailTab=tab||'overview'; renderProjectDetail(); }
+function openProjectDetail(id, tab){
+  var p=state.projects[id]; if(!p) return;
+  if(!canSeeProject(p)){ toast('That project is not assigned to you','err'); return; }
+  detailProjId=id; detailTab=tab||'overview'; renderProjectDetail();
+}
 function curProj(){ return state.projects[detailProjId]; }
 function renderProjectDetail(){
   var p=curProj(); if(!p){ closeModal(); return; }
@@ -914,7 +947,9 @@ function renderItemsView(){
 function renderItemsTable(){
   var wrap=document.getElementById('itemsTableWrap'); if(!wrap) return;
   var q=((document.getElementById('itSearch')||{}).value||'').toLowerCase();
+  var visIds=visibleProjectIds();
   var list=Object.values(state.items).filter(function(it){
+    if(!visIds[it.projectId]) return false;                 // salesmen only see their projects' items
     if(itemProjFilter!=='all' && it.projectId!==itemProjFilter) return false;
     if(itemHideDone && (Number(it.percent)||0)>=100) return false;
     if(q && !((it.description||'')+' '+(it.section||'')).toLowerCase().includes(q)) return false;
@@ -1046,10 +1081,13 @@ function claimTotals(claim){
 var claimProjFilter='all';
 function renderClaims(){
   var el=document.getElementById('view-claims');
-  if(!canSeePrice()){ el.innerHTML='<div class="empty-state">Progress claims are only available to Admin users.</div>'; return; }
+  if(!canSeePrice()){ el.innerHTML='<div class="empty-state">Progress claims are not available for your role.</div>'; return; }
+  var visIds=visibleProjectIds();
   var projOpts='<option value="all">All projects</option>'+sortedProjects().map(function(p){
     return '<option value="'+p.id+'"'+(claimProjFilter===p.id?' selected':'')+'>'+esc(p.name)+'</option>'; }).join('');
-  var list=Object.values(state.claims).filter(function(c){ return claimProjFilter==='all'||c.projectId===claimProjFilter; })
+  var list=Object.values(state.claims).filter(function(c){
+      if(!visIds[c.projectId]) return false;                 // salesmen only see their projects' claims
+      return claimProjFilter==='all'||c.projectId===claimProjFilter; })
     .sort(function(a,b){ var d=(a.projectId||'').localeCompare(b.projectId||''); if(d) return d; return (b.claimNo||0)-(a.claimNo||0); });
 
   el.innerHTML=
