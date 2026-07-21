@@ -1303,54 +1303,153 @@ function exportClaimPDF(c){
   toast('Choose “Save as PDF” in the print dialog','ok');
 }
 
+function round2(n){ return Math.round((Number(n)||0)*100)/100; }
+function xlEsc(s){ return String(s==null?'':s).replace(/[&<>"']/g,function(ch){
+  return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&apos;'}[ch]; }); }
+/* one cell — o:{v,t,s,m,i} value / type / styleID / mergeAcross / column-index */
+function xlCell(o){
+  o=o||{};
+  var t=o.t || ((typeof o.v==='number' && isFinite(o.v))?'Number':'String');
+  var a='';
+  if(o.i) a+=' ss:Index="'+o.i+'"';
+  if(o.s) a+=' ss:StyleID="'+o.s+'"';
+  if(o.m) a+=' ss:MergeAcross="'+o.m+'"';
+  var data=(o.v===''||o.v==null)?'':'<Data ss:Type="'+t+'">'+xlEsc(o.v)+'</Data>';
+  return '<Cell'+a+'>'+data+'</Cell>';
+}
+function xlRow(cells,h){ return '<Row'+(h?' ss:Height="'+h+'"':'')+'>'+cells.map(xlCell).join('')+'</Row>'; }
+
+var XL_STYLES =
+ '<Style ss:ID="Default" ss:Name="Normal"><Alignment ss:Vertical="Center"/>'+
+   '<Font ss:FontName="Calibri" ss:Size="10"/></Style>'+
+ '<Style ss:ID="title"><Font ss:FontName="Calibri" ss:Size="15" ss:Bold="1" ss:Color="#16213E"/>'+
+   '<Alignment ss:Horizontal="Center" ss:Vertical="Center"/></Style>'+
+ '<Style ss:ID="sub"><Font ss:Size="11" ss:Bold="1" ss:Color="#E94560"/>'+
+   '<Alignment ss:Horizontal="Center"/></Style>'+
+ '<Style ss:ID="mlbl"><Font ss:Bold="1"/><Interior ss:Color="#EEF1F7" ss:Pattern="Solid"/>'+
+   '<Borders>'+bAll()+'</Borders></Style>'+
+ '<Style ss:ID="mval"><Borders>'+bAll()+'</Borders></Style>'+
+ '<Style ss:ID="hdr"><Font ss:Bold="1" ss:Color="#FFFFFF"/><Interior ss:Color="#16213E" ss:Pattern="Solid"/>'+
+   '<Alignment ss:Horizontal="Center" ss:Vertical="Center" ss:WrapText="1"/><Borders>'+bAll()+'</Borders></Style>'+
+ '<Style ss:ID="txt"><Alignment ss:Vertical="Top" ss:WrapText="1"/><Borders>'+bAll()+'</Borders></Style>'+
+ '<Style ss:ID="i0"><Alignment ss:Horizontal="Right"/><Borders>'+bAll()+'</Borders>'+
+   '<NumberFormat ss:Format="#,##0"/></Style>'+
+ '<Style ss:ID="money"><Alignment ss:Horizontal="Right"/><Borders>'+bAll()+'</Borders>'+
+   '<NumberFormat ss:Format="#,##0.00"/></Style>'+
+ '<Style ss:ID="pct"><Alignment ss:Horizontal="Right"/><Borders>'+bAll()+'</Borders>'+
+   '<NumberFormat ss:Format="0&quot;%&quot;"/></Style>'+
+ '<Style ss:ID="totlbl"><Font ss:Bold="1"/><Alignment ss:Horizontal="Right"/>'+
+   '<Interior ss:Color="#DCE3F0" ss:Pattern="Solid"/><Borders>'+bAll()+'</Borders></Style>'+
+ '<Style ss:ID="totmoney"><Font ss:Bold="1"/><Alignment ss:Horizontal="Right"/>'+
+   '<Interior ss:Color="#DCE3F0" ss:Pattern="Solid"/><Borders>'+bAll()+'</Borders>'+
+   '<NumberFormat ss:Format="#,##0.00"/></Style>'+
+ '<Style ss:ID="totpct"><Font ss:Bold="1"/><Alignment ss:Horizontal="Right"/>'+
+   '<Interior ss:Color="#DCE3F0" ss:Pattern="Solid"/><Borders>'+bAll()+'</Borders>'+
+   '<NumberFormat ss:Format="0.0&quot;%&quot;"/></Style>'+
+ '<Style ss:ID="sumlbl"><Font ss:Bold="1"/><Alignment ss:Horizontal="Right"/><Borders>'+bAll()+'</Borders></Style>'+
+ '<Style ss:ID="summoney"><Font ss:Bold="1"/><Alignment ss:Horizontal="Right"/><Borders>'+bAll()+'</Borders>'+
+   '<NumberFormat ss:Format="#,##0.00"/></Style>'+
+ '<Style ss:ID="netlbl"><Font ss:Bold="1" ss:Size="11" ss:Color="#FFFFFF"/><Alignment ss:Horizontal="Right"/>'+
+   '<Interior ss:Color="#16213E" ss:Pattern="Solid"/><Borders>'+bAll()+'</Borders></Style>'+
+ '<Style ss:ID="netmoney"><Font ss:Bold="1" ss:Size="11" ss:Color="#FFFFFF"/><Alignment ss:Horizontal="Right"/>'+
+   '<Interior ss:Color="#16213E" ss:Pattern="Solid"/><Borders>'+bAll()+'</Borders>'+
+   '<NumberFormat ss:Format="#,##0.00"/></Style>'+
+ '<Style ss:ID="note"><Font ss:Italic="1" ss:Size="9"/><Alignment ss:Vertical="Top" ss:WrapText="1"/></Style>';
+function bAll(){
+  return ['Top','Bottom','Left','Right'].map(function(p){
+    return '<Border ss:Position="'+p+'" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#9AA6BF"/>';
+  }).join('');
+}
+
 function exportClaimExcel(c){
   var p=state.projects[c.projectId]||{};
   var lines=claimLines(c), t=claimTotals(c);
+  var N=9;                                   // total columns
+  var full=N-1;                              // MergeAcross to fill a full-width row
   var rows=[];
-  rows.push(['IPOH HYDROTECH ENGINEERING SDN BHD']);
-  rows.push(['PROGRESS CLAIM No. '+(c.claimNo||'')]);
-  rows.push([]);
-  rows.push(['Project', p.name||'', '', 'Claim Date', fmtDate(c.date)]);
-  rows.push(['Client', p.client||'', '', 'Work Done Up To', fmtDate(c.periodTo)]);
-  rows.push(['Site', p.site||'', '', 'Status', c.status||'draft']);
-  rows.push([]);
-  rows.push(['#','Description','Unit','Qty','Contract (RM)','Prev %','To Date %','Value To Date (RM)','This Claim (RM)']);
+
+  // title + subtitle (merged across the whole sheet)
+  rows.push(xlRow([{v:'IPOH HYDROTECH ENGINEERING SDN BHD', s:'title', m:full}], 22));
+  rows.push(xlRow([{v:'PROGRESS CLAIM No. '+(c.claimNo||''), s:'sub', m:full}], 18));
+  rows.push('<Row/>');
+
+  // meta block — label merged across A:B (col A alone is too narrow for the
+  // longer labels), value merged across C..I
+  function meta(label,value){ rows.push(xlRow([{v:label, s:'mlbl', m:1}, {v:value, s:'mval', i:3, m:N-3}])); }
+  meta('Project', p.name||'');
+  meta('Client', p.client||'-');
+  meta('Site', p.site||'-');
+  meta('Claim Date', fmtDate(c.date));
+  meta('Work Done Up To', fmtDate(c.periodTo));
+  meta('Status', (c.status||'draft').toUpperCase());
+  if(c.createdBy) meta('Prepared By', c.createdBy);
+  rows.push('<Row/>');
+
+  // header row
+  rows.push(xlRow([
+    {v:'#',s:'hdr'},{v:'Description',s:'hdr'},{v:'Unit',s:'hdr'},{v:'Qty',s:'hdr'},
+    {v:'Contract (RM)',s:'hdr'},{v:'Prev %',s:'hdr'},{v:'To Date %',s:'hdr'},
+    {v:'Value To Date (RM)',s:'hdr'},{v:'This Claim (RM)',s:'hdr'}
+  ], 30));
+
+  // item rows
   lines.forEach(function(l,i){
-    rows.push([ l.item.no||i+1, l.item.description||'', l.item.unit||'',
-      l.item.qty===''||l.item.qty==null?'':Number(l.item.qty),
-      round2(l.value), l.prevPct, l.thisPct, round2(l.toDate), round2(l.thisAmt) ]);
+    var qty=(l.item.qty===''||l.item.qty==null)?'':Number(l.item.qty);
+    rows.push(xlRow([
+      {v:(l.item.no||i+1),s:'i0'},
+      {v:l.item.description||'',s:'txt'},
+      {v:l.item.unit||'',s:'txt'},
+      {v:qty,s:'i0'},
+      {v:round2(l.value),s:'money'},
+      {v:l.prevPct,s:'pct'},
+      {v:l.thisPct,s:'pct'},
+      {v:round2(l.toDate),s:'money'},
+      {v:round2(l.thisAmt),s:'money'}
+    ]));
   });
-  rows.push([]);
-  rows.push(['','','','TOTAL', round2(t.contract), '', round2(t.pctOverall), round2(t.toDate), round2(t.thisAmt)]);
-  rows.push(['','','','','','','','Total Value of Work Done To Date', round2(t.toDate)]);
-  rows.push(['','','','','','','','Less: Previous Payments', round2(t.previousPaid)]);
-  rows.push(['','','','','','','','NET AMOUNT DUE THIS CLAIM', round2(t.netDue)]);
-  if(c.notes){ rows.push([]); rows.push(['Notes', c.notes]); }
 
-  var name='Progress Claim '+(c.claimNo||'')+' - '+(p.name||'project').replace(/[\\\/:*?"<>|]/g,'') ;
-  downloadXLSX(rows, name);
-}
-function round2(n){ return Math.round((Number(n)||0)*100)/100; }
+  // totals row aligned to the columns
+  rows.push(xlRow([
+    {v:'',s:'totlbl'},{v:'',s:'totlbl'},{v:'',s:'totlbl'},{v:'TOTAL',s:'totlbl'},
+    {v:round2(t.contract),s:'totmoney'},{v:'',s:'totlbl'},
+    {v:round2(t.pctOverall),s:'totpct'},
+    {v:round2(t.toDate),s:'totmoney'},{v:round2(t.thisAmt),s:'totmoney'}
+  ]));
 
-/* Minimal SpreadsheetML writer — opens natively in Excel, no external library
-   and no CDN dependency. */
-function downloadXLSX(rows, filename){
-  var xmlEsc=function(s){ return String(s==null?'':s).replace(/[&<>"']/g,function(ch){
-    return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&apos;'}[ch]; }); };
-  var body=rows.map(function(r){
-    return '<Row>'+r.map(function(cell){
-      var isNum = typeof cell==='number' && isFinite(cell);
-      return '<Cell><Data ss:Type="'+(isNum?'Number':'String')+'">'+xmlEsc(isNum?cell:cell)+'</Data></Cell>';
-    }).join('')+'</Row>';
-  }).join('');
-  var xml='<?xml version="1.0"?><?mso-application progid="Excel.Sheet"?>'+
-    '<Workbook xmlns="urn:schemas-microsoft-com:office:spreadsheet" '+
-    'xmlns:ss="urn:schemas-microsoft-com:office:spreadsheet">'+
-    '<Worksheet ss:Name="Progress Claim"><Table>'+body+'</Table></Worksheet></Workbook>';
-  var blob=new Blob([xml],{type:'application/vnd.ms-excel'});
+  // summary lines — long label merged across A..H, value in col I
+  function summary(label,value,lblStyle,valStyle){
+    rows.push(xlRow([{v:label,s:lblStyle,m:full-1},{v:round2(value),s:valStyle,i:N}]));
+  }
+  summary('Total Value of Work Done To Date', t.toDate, 'sumlbl','summoney');
+  summary('Less: Previous Payments', t.previousPaid, 'sumlbl','summoney');
+  summary('NET AMOUNT DUE THIS CLAIM (RM)', t.netDue, 'netlbl','netmoney');
+
+  if(c.notes){ rows.push('<Row/>'); rows.push(xlRow([{v:'Notes: '+c.notes, s:'note', m:full}], 42)); }
+
+  var cols=[32,300,46,50,90,52,62,98,98].map(function(w){ return '<Column ss:Width="'+w+'"/>'; }).join('');
+
+  var xml='<?xml version="1.0"?>\n<?mso-application progid="Excel.Sheet"?>\n'+
+    '<Workbook xmlns="urn:schemas-microsoft-com:office:spreadsheet"'+
+      ' xmlns:o="urn:schemas-microsoft-com:office:office"'+
+      ' xmlns:x="urn:schemas-microsoft-com:office:excel"'+
+      ' xmlns:ss="urn:schemas-microsoft-com:office:spreadsheet">'+
+    '<Styles>'+XL_STYLES+'</Styles>'+
+    '<Worksheet ss:Name="Progress Claim ' + (c.claimNo||'') + '">'+
+      '<Table ss:DefaultColumnWidth="70" ss:DefaultRowHeight="15">'+cols+rows.join('')+'</Table>'+
+      '<WorksheetOptions xmlns="urn:schemas-microsoft-com:office:excel">'+
+        '<PageSetup><Layout x:Orientation="Landscape"/>'+
+          '<Header x:Margin="0.3"/><Footer x:Margin="0.3"/>'+
+          '<PageMargins x:Bottom="0.5" x:Left="0.4" x:Right="0.4" x:Top="0.5"/></PageSetup>'+
+        '<FitToPage/><Print><FitWidth>1</FitWidth><FitHeight>0</FitHeight>'+
+          '<ValidPrinterInfo/><PaperSizeIndex>9</PaperSizeIndex></Print>'+
+      '</WorksheetOptions>'+
+    '</Worksheet></Workbook>';
+
+  var name=('Progress Claim '+(c.claimNo||'')+' - '+(p.name||'project')).replace(/[\\\/:*?"<>|]/g,'');
+  var blob=new Blob(['﻿'+xml],{type:'application/vnd.ms-excel'});
   var a=document.createElement('a');
   a.href=URL.createObjectURL(blob);
-  a.download=filename.slice(0,110)+'.xls';
+  a.download=name.slice(0,110)+'.xls';
   document.body.appendChild(a); a.click();
   setTimeout(function(){ URL.revokeObjectURL(a.href); a.remove(); }, 1500);
   toast('Excel file downloaded','ok');
