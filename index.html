@@ -346,6 +346,7 @@ var FB_CONFIG = {
 var DB_PREFIX  = "pm/";
 var FB_REGION  = "asia-southeast1";               // Cloud Functions region
 var EXTRACT_FN = "extractItems";                  // callable function name
+var EXTRACT_INFO_FN = "extractProjectInfo";        // header-info callable, for the New Project form
 var FB_ENABLED = !!(FB_CONFIG.apiKey && FB_CONFIG.databaseURL);
 </script>
 <script>
@@ -463,8 +464,13 @@ document.getElementById('sidebarBackdrop').addEventListener('click', closeSideba
 
 /* ---------- modal ---------- */
 var modalBackdrop=document.getElementById('modalBackdrop'), modalBox=document.getElementById('modalBox');
-function openModal(html, wide){ modalBox.className='modal'+(wide?' wide':''); modalBox.innerHTML=html; modalBackdrop.classList.add('open'); }
-function closeModal(){ modalBackdrop.classList.remove('open'); modalBox.innerHTML=''; }
+/* optional cleanup hook a modal can register (e.g. delete a file that was
+   uploaded speculatively before the record it belongs to was saved); runs
+   on every close path — the × button, Cancel, Escape, and backdrop click —
+   then clears itself so it never fires for an unrelated later modal */
+var modalCleanup=null;
+function openModal(html, wide){ modalCleanup=null; modalBox.className='modal'+(wide?' wide':''); modalBox.innerHTML=html; modalBackdrop.classList.add('open'); }
+function closeModal(){ if(modalCleanup){ try{ modalCleanup(); }catch(e){} modalCleanup=null; } modalBackdrop.classList.remove('open'); modalBox.innerHTML=''; }
 modalBackdrop.addEventListener('click', function(e){ if(e.target===modalBackdrop) closeModal(); });
 document.addEventListener('keydown', function(e){ if(e.key==='Escape') closeModal(); });
 
@@ -630,13 +636,21 @@ function renderProjectGrid(){
 }
 
 function openProjectForm(p){
-  p=p||{}; var isNew=!p.id; var pendingFile=null;
+  p=p||{}; var isNew=!p.id;
+  // generated up front so a document can be uploaded to its final path
+  // (pm/projects/{id}/...) immediately on selection, before the project
+  // record itself is saved
+  var pendingId = isNew ? uid() : p.id;
+  var pendingDoc = null;      // the documents/ record once the file is uploaded
   openModal(
     '<div class="modal-head"><div><h2>'+(isNew?'New Project':'Edit Project')+'</h2>'+
-      (isNew?'<div class="sub">Upload the customer PO / BQ / Quotation — items can be auto-extracted after.</div>':'')+
+      (isNew?'<div class="sub">Upload the customer PO / BQ / Quotation first — the project name and client fill in automatically, and scope items can be extracted after.</div>':'')+
     '</div><button class="modal-close" data-close>&times;</button></div>'+
+    (isNew? '<div class="field full"><label>Source Document (PO / BQ / Quotation)</label>'+
+      '<div class="file-drop" id="pfDocDrop">Click to choose a PDF or image<input type="file" id="pfDocInput" accept=".pdf,image/*" style="display:none"></div>'+
+      '<div class="hint" id="pfDocHint">Optional — you can also fill in the details manually below.</div></div>' : '')+
     '<div class="form-grid">'+
-      field('Project Name','pfName',p.name,'text',true,true)+
+      field('Project Name','pfName',p.name,'text',true,!isNew)+
       selField('Status','pfStatus',['planning','in-progress','delayed','on-hold','completed'],p.status||'planning')+
       field('Client','pfClient',p.client)+
       field('Site / Location','pfSite',p.site)+
@@ -649,9 +663,6 @@ function openProjectForm(p){
       selField('Progress Mode','pfMode',[['auto','Auto (weighted from items)'],['manual','Manual %']],p.progressMode||'auto')+
       '<div class="field" id="manualProgWrap" style="'+((p.progressMode==='manual')?'':'display:none')+'">'+
         '<label>Manual Progress</label><div class="range"><input type="range" id="pfProgress" min="0" max="100" value="'+(Number(p.progress)||0)+'"><span class="val" id="pfProgVal">'+(Number(p.progress)||0)+'%</span></div></div>'+
-      (isNew? '<div class="field full"><label>Source Document (PO / BQ / Quotation)</label>'+
-        '<div class="file-drop" id="pfDocDrop">Click to choose a PDF or image<input type="file" id="pfDocInput" accept=".pdf,image/*" style="display:none"></div>'+
-        '<div class="hint">Optional. After creating, use “Extract items with AI” to auto-list the scope items.</div></div>' : '')+
       '<div class="field full"><label>Notes</label><textarea id="pfNotes">'+esc(p.notes||'')+'</textarea></div>'+
     '</div>'+
     '<div class="modal-foot">'+
@@ -665,9 +676,39 @@ function openProjectForm(p){
   modeSel.addEventListener('change', function(){ wrap.style.display=this.value==='manual'?'block':'none'; });
   var rng=document.getElementById('pfProgress'); if(rng) rng.addEventListener('input', function(){ document.getElementById('pfProgVal').textContent=this.value+'%'; });
   if(isNew){
-    var drop=document.getElementById('pfDocDrop'), inp=document.getElementById('pfDocInput');
+    var drop=document.getElementById('pfDocDrop'), inp=document.getElementById('pfDocInput'), hint=document.getElementById('pfDocHint');
+    var pick=function(file){
+      if(!file) return;
+      drop.classList.add('has-file'); drop.textContent='📎 '+file.name;
+      hint.innerHTML='<span class="spin"></span> Uploading…';
+      uploadFile(file, pendingId, {source:true, docKind:'quotation'}).then(function(doc){
+        pendingDoc=doc;
+        // anything uploaded before the project is actually saved should be
+        // cleaned up if the user backs out of this modal
+        modalCleanup=function(){ deleteDocument(pendingDoc, true); pendingDoc=null; };
+        if(!(FB_ENABLED && functions)){
+          hint.textContent='Saved. AI auto-fill needs the Firebase backend — fill in the details below.';
+          return;
+        }
+        hint.innerHTML='<span class="spin"></span> Reading document to fill in project details…';
+        functions.httpsCallable(EXTRACT_INFO_FN, { timeout: 120000 })({ storagePath:doc.storagePath, fileName:doc.name })
+          .then(function(res){
+            var info=res.data||{}; var filled=[];
+            if(info.name && !val('pfName').trim()){ document.getElementById('pfName').value=info.name; filled.push('name'); }
+            if(info.client && !val('pfClient').trim()){ document.getElementById('pfClient').value=info.client; filled.push('client'); }
+            if(info.site && !val('pfSite').trim()){ document.getElementById('pfSite').value=info.site; filled.push('site'); }
+            hint.textContent = filled.length
+              ? 'Filled in '+filled.join(', ')+' from the document — please check before creating.'
+              : 'Could not find project details in the document — please fill them in below.';
+          })
+          .catch(function(e){ hint.textContent='Could not auto-read the document ('+esc(e.message||e)+') — please fill in the details below.'; });
+      }).catch(function(){ hint.textContent='Upload failed — please fill in the details manually.'; });
+    };
     drop.addEventListener('click', function(){ inp.click(); });
-    inp.addEventListener('change', function(){ if(inp.files[0]){ pendingFile=inp.files[0]; drop.classList.add('has-file'); drop.textContent='📎 '+pendingFile.name; } });
+    inp.addEventListener('change', function(){ pick(inp.files[0]); });
+    ['dragover','dragenter'].forEach(function(ev){ drop.addEventListener(ev,function(e){ e.preventDefault(); drop.classList.add('drag-over'); }); });
+    ['dragleave','dragend'].forEach(function(ev){ drop.addEventListener(ev,function(){ drop.classList.remove('drag-over'); }); });
+    drop.addEventListener('drop', function(e){ e.preventDefault(); drop.classList.remove('drag-over'); pick(e.dataTransfer.files[0]); });
   }
   document.getElementById('saveProjBtn').addEventListener('click', function(){
     var name=val('pfName').trim(); if(!name){ toast('Project name required','err'); return; }
@@ -675,19 +716,19 @@ function openProjectForm(p){
     var salesmanId = isAdmin() ? val('pfSalesman') : (p.salesmanId||'');
     var smUser = salesmanId ? state.users[salesmanId] : null;
     var obj=Object.assign({}, p, {
-      id:p.id, name:name, status:val('pfStatus'), client:val('pfClient').trim(), site:val('pfSite').trim(),
+      id:pendingId, name:name, status:val('pfStatus'), client:val('pfClient').trim(), site:val('pfSite').trim(),
       startDate:val('pfStart'), endDate:val('pfEnd'), progressMode:val('pfMode'),
       salesmanId:salesmanId, salesmanName: smUser? userLabel(smUser) : (salesmanId? (p.salesmanName||'') : ''),
       progress:Number((document.getElementById('pfProgress')||{}).value||p.progress||0), notes:val('pfNotes').trim(),
       createdAt:p.createdAt||Date.now()
     });
+    var savedDoc=pendingDoc;
+    modalCleanup=null;   // the doc (if any) is now legitimately attached — don't delete it on close
     var saved=put('projects', obj);
     closeModal(); toast(isNew?'Project created':'Project saved','ok');
-    if(isNew && pendingFile){
-      uploadFile(pendingFile, saved.id, {source:true}).then(function(doc){
-        openProjectDetail(saved.id, 'items');
-        if(canEdit()) setTimeout(function(){ if(confirm('Extract scope items from '+pendingFile.name+' using AI now?')) extractItems(saved, doc); }, 300);
-      });
+    if(isNew && savedDoc){
+      openProjectDetail(saved.id, 'items');
+      if(canEdit()) setTimeout(function(){ if(confirm('Extract scope items from '+savedDoc.name+' using AI now?')) extractItems(saved, savedDoc); }, 300);
     } else { renderCurrent(); if(isNew) openProjectDetail(saved.id); }
   });
   var del=modalBox.querySelector('[data-del]');

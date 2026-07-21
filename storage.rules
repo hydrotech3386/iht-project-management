@@ -12,10 +12,16 @@ service firebase.storage {
       allow read: if request.auth != null;
 
       // Uploads: signed in, max 25MB, PDFs and images only.
-      allow write: if request.auth != null
+      allow create, update: if request.auth != null
                    && request.resource.size < 25 * 1024 * 1024
                    && (request.resource.contentType.matches('application/pdf')
                        || request.resource.contentType.matches('image/.*'));
+
+      // Deletes: `request.resource` is null on a delete request, so the
+      // size/contentType checks above can never apply here — a delete rule
+      // needs its own clause, or every delete silently 403s and the storage
+      // object is orphaned even though the DB record is removed.
+      allow delete: if request.auth != null;
     }
 
     // Everything outside pm/ is denied to this app.

@@ -1,9 +1,13 @@
 /**
- * extractItems — reads a customer PO / BQ / Quotation stored in Firebase Storage
- * and returns its scope line items, using Claude's vision + document reading.
+ * Cloud Functions for the Project Management app.
  *
- * Called from the Project Management web app (Items tab → "Extract items with AI").
- * The Anthropic API key lives in Secret Manager and never reaches the browser.
+ * extractItems       — reads a PO/BQ/Quotation and returns its scope line items.
+ * extractProjectInfo — reads the same kind of document and returns just the
+ *                       header info (project name / client / site) so the
+ *                       "New Project" form can auto-fill itself.
+ *
+ * Both use Claude's document reading. The Anthropic API key lives in Secret
+ * Manager and never reaches the browser.
  */
 const { onCall, HttpsError } = require('firebase-functions/v2/https');
 const { defineSecret } = require('firebase-functions/params');
@@ -16,7 +20,83 @@ const ANTHROPIC_API_KEY = defineSecret('ANTHROPIC_API_KEY');
 const MODEL = 'claude-sonnet-5';
 const MAX_BYTES = 20 * 1024 * 1024; // Anthropic caps document/image payloads
 
-const SYSTEM_PROMPT = `You extract the scope-of-work line items from construction and M&E procurement documents (Purchase Orders, Bills of Quantities, Quotations) for a Malaysian water/wastewater engineering company.
+/* ---- shared: fetch a document from Storage and build an Anthropic content block ---- */
+async function fetchDocBlock(storagePath, fileName) {
+  let buffer, contentType;
+  try {
+    const file = admin.storage().bucket().file(storagePath);
+    const [meta] = await file.getMetadata();
+    contentType = meta.contentType || '';
+    if (Number(meta.size) > MAX_BYTES) {
+      throw new HttpsError('invalid-argument',
+        `File is ${(meta.size / 1048576).toFixed(1)}MB — the limit is 20MB.`);
+    }
+    [buffer] = await file.download();
+  } catch (e) {
+    if (e instanceof HttpsError) throw e;
+    console.error('storage read failed', e);
+    throw new HttpsError('not-found', 'Could not read the document from storage.');
+  }
+
+  const b64 = buffer.toString('base64');
+  if (contentType === 'application/pdf' || /\.pdf$/i.test(fileName || '')) {
+    return { type: 'document', source: { type: 'base64', media_type: 'application/pdf', data: b64 } };
+  }
+  if (contentType.startsWith('image/')) {
+    return { type: 'image', source: { type: 'base64', media_type: contentType, data: b64 } };
+  }
+  throw new HttpsError('invalid-argument',
+    `Unsupported file type "${contentType || 'unknown'}". Upload a PDF or an image.`);
+}
+
+/* ---- shared: call Claude with a document block + system prompt ---- */
+async function callClaude(block, systemPrompt, userText, maxTokens) {
+  let res;
+  try {
+    res = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+        'x-api-key': ANTHROPIC_API_KEY.value(),
+        'anthropic-version': '2023-06-01'
+      },
+      body: JSON.stringify({
+        model: MODEL,
+        max_tokens: maxTokens,
+        system: systemPrompt,
+        messages: [{ role: 'user', content: [block, { type: 'text', text: userText }] }]
+      })
+    });
+  } catch (e) {
+    console.error('anthropic request failed', e);
+    throw new HttpsError('unavailable', 'Could not reach the AI service.');
+  }
+  if (!res.ok) {
+    const errText = await res.text();
+    console.error('anthropic error', res.status, errText.slice(0, 800));
+    if (res.status === 401) throw new HttpsError('failed-precondition', 'The Anthropic API key is invalid.');
+    if (res.status === 429) throw new HttpsError('resource-exhausted', 'AI rate limit hit — try again shortly.');
+    throw new HttpsError('internal', `AI service error (${res.status}).`);
+  }
+  const data = await res.json();
+  const text = (data.content || []).filter(c => c.type === 'text').map(c => c.text).join('').trim();
+  return { text, data };
+}
+
+function requirePmStoragePath(storagePath) {
+  if (!storagePath || typeof storagePath !== 'string') {
+    throw new HttpsError('invalid-argument', 'storagePath is required.');
+  }
+  // only ever read this app's own namespace
+  if (!storagePath.startsWith('pm/projects/')) {
+    throw new HttpsError('permission-denied', 'Path outside this app.');
+  }
+}
+
+/* =====================================================================
+   extractItems — scope-of-work line items
+   ===================================================================== */
+const ITEMS_SYSTEM_PROMPT = `You extract the scope-of-work line items from construction and M&E procurement documents (Purchase Orders, Bills of Quantities, Quotations) for a Malaysian water/wastewater engineering company.
 
 Return ONLY a JSON object of this exact shape:
 {"items":[{"description":string,"qty":number|null,"unit":string,"rate":number|null,"amount":number|null,"section":string}]}
@@ -81,92 +161,20 @@ exports.extractItems = onCall(
     cors: true
   },
   async (request) => {
-    if (!request.auth) {
-      throw new HttpsError('unauthenticated', 'Sign in to use AI extraction.');
-    }
+    if (!request.auth) throw new HttpsError('unauthenticated', 'Sign in to use AI extraction.');
 
     const { storagePath, fileName } = request.data || {};
-    if (!storagePath || typeof storagePath !== 'string') {
-      throw new HttpsError('invalid-argument', 'storagePath is required.');
-    }
-    // only ever read this app's own namespace
-    if (!storagePath.startsWith('pm/projects/')) {
-      throw new HttpsError('permission-denied', 'Path outside this app.');
-    }
+    requirePmStoragePath(storagePath);
 
-    // ---- fetch the document from Storage ----
-    let buffer, contentType;
-    try {
-      const file = admin.storage().bucket().file(storagePath);
-      const [meta] = await file.getMetadata();
-      contentType = meta.contentType || '';
-      if (Number(meta.size) > MAX_BYTES) {
-        throw new HttpsError('invalid-argument',
-          `File is ${(meta.size / 1048576).toFixed(1)}MB — the limit is 20MB.`);
-      }
-      [buffer] = await file.download();
-    } catch (e) {
-      if (e instanceof HttpsError) throw e;
-      console.error('storage read failed', e);
-      throw new HttpsError('not-found', 'Could not read the document from storage.');
-    }
+    const block = await fetchDocBlock(storagePath, fileName);
+    const { text, data } = await callClaude(block, ITEMS_SYSTEM_PROMPT,
+      'Extract every scope line item from this document as JSON.', 32000);
 
-    // ---- build the content block ----
-    const b64 = buffer.toString('base64');
-    let block;
-    if (contentType === 'application/pdf' || /\.pdf$/i.test(fileName || '')) {
-      block = { type: 'document', source: { type: 'base64', media_type: 'application/pdf', data: b64 } };
-    } else if (contentType.startsWith('image/')) {
-      block = { type: 'image', source: { type: 'base64', media_type: contentType, data: b64 } };
-    } else {
-      throw new HttpsError('invalid-argument',
-        `Unsupported file type "${contentType || 'unknown'}". Upload a PDF or an image.`);
-    }
-
-    // ---- call Claude ----
-    let res;
-    try {
-      res = await fetch('https://api.anthropic.com/v1/messages', {
-        method: 'POST',
-        headers: {
-          'content-type': 'application/json',
-          'x-api-key': ANTHROPIC_API_KEY.value(),
-          'anthropic-version': '2023-06-01'
-        },
-        body: JSON.stringify({
-          model: MODEL,
-          max_tokens: 32000,   // large BQs can have 60+ items; 8000 truncated some
-          system: SYSTEM_PROMPT,
-          messages: [{
-            role: 'user',
-            content: [
-              block,
-              { type: 'text', text: 'Extract every scope line item from this document as JSON.' }
-            ]
-          }]
-        })
-      });
-    } catch (e) {
-      console.error('anthropic request failed', e);
-      throw new HttpsError('unavailable', 'Could not reach the AI service.');
-    }
-
-    if (!res.ok) {
-      const errText = await res.text();
-      console.error('anthropic error', res.status, errText.slice(0, 800));
-      if (res.status === 401) throw new HttpsError('failed-precondition', 'The Anthropic API key is invalid.');
-      if (res.status === 429) throw new HttpsError('resource-exhausted', 'AI rate limit hit — try again shortly.');
-      throw new HttpsError('internal', `AI service error (${res.status}).`);
-    }
-
-    const data = await res.json();
-    const text = (data.content || []).filter(c => c.type === 'text').map(c => c.text).join('').trim();
     if (data.stop_reason === 'max_tokens') {
       console.warn('response hit max_tokens — will attempt to salvage complete items');
     }
 
-    // ---- parse, tolerating fences and a truncated tail ----
-    let parsed = parseItemsLoose(text);
+    const parsed = parseItemsLoose(text);
     if (!parsed) {
       console.error('parse failed. stop_reason:', data.stop_reason, 'raw head:', text.slice(0, 500), 'raw tail:', text.slice(-500));
       throw new HttpsError('internal', 'The AI response could not be read. Try again.');
@@ -192,5 +200,56 @@ exports.extractItems = onCall(
       'usage:', JSON.stringify(data.usage || {}));
 
     return { items, usage: data.usage || null };
+  }
+);
+
+/* =====================================================================
+   extractProjectInfo — header details for the "New Project" form
+   ===================================================================== */
+const INFO_SYSTEM_PROMPT = `You extract basic header information from a construction/M&E procurement document (Purchase Order, Bill of Quantities, or Quotation) for a Malaysian water/wastewater engineering company, so it can pre-fill a new project form.
+
+Return ONLY a JSON object of this exact shape:
+{"name":string|null,"client":string|null,"site":string|null}
+
+Rules:
+- "name" is a short, human project name/title — e.g. the project/contract title line, the subject of the quotation, or a short description of the works (NOT the document/quotation reference number alone, e.g. not "Q30677R"). Keep it concise, like something a person would type as a project name.
+- "client" is the customer / employer / main contractor this document is addressed or quoted to — usually near "To:", "Attn:", "Client:", "Employer:", "Company:", or the addressee block at the top. Company name only, no address.
+- "site" is the site/location name if stated (town, project location, site address short form) — null if not stated.
+- If a field genuinely cannot be determined, use null. Do not guess or invent values.
+Output raw JSON only — no markdown fences, no explanation.`;
+
+exports.extractProjectInfo = onCall(
+  {
+    region: 'asia-southeast1',
+    secrets: [ANTHROPIC_API_KEY],
+    timeoutSeconds: 120,   // header-only: tiny output, so mostly just the doc-read time
+    memory: '1GiB',
+    cors: true
+  },
+  async (request) => {
+    if (!request.auth) throw new HttpsError('unauthenticated', 'Sign in to use AI extraction.');
+
+    const { storagePath, fileName } = request.data || {};
+    requirePmStoragePath(storagePath);
+
+    const block = await fetchDocBlock(storagePath, fileName);
+    const { text } = await callClaude(block, INFO_SYSTEM_PROMPT,
+      'Extract the project name, client and site from this document as JSON.', 500);
+
+    let parsed;
+    try {
+      const cleaned = text.replace(/^```(?:json)?\s*/i, '').replace(/```\s*$/, '').trim();
+      const start = cleaned.indexOf('{'), end = cleaned.lastIndexOf('}');
+      parsed = JSON.parse(start >= 0 && end > start ? cleaned.slice(start, end + 1) : cleaned);
+    } catch (e) {
+      console.error('extractProjectInfo parse failed. raw:', text.slice(0, 400));
+      // non-fatal — the form just won't auto-fill
+      return { name: '', client: '', site: '' };
+    }
+
+    const clean = v => String(v || '').trim();
+    const result = { name: clean(parsed.name), client: clean(parsed.client), site: clean(parsed.site) };
+    console.log(`extracted project info from ${fileName || storagePath}:`, JSON.stringify(result));
+    return result;
   }
 );
