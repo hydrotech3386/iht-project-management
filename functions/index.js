@@ -99,11 +99,12 @@ function requirePmStoragePath(storagePath) {
 const ITEMS_SYSTEM_PROMPT = `You extract the scope-of-work line items from construction and M&E procurement documents (Purchase Orders, Bills of Quantities, Quotations) for a Malaysian water/wastewater engineering company.
 
 Return ONLY a JSON object of this exact shape:
-{"items":[{"description":string,"qty":number|null,"unit":string,"rate":number|null,"amount":number|null,"section":string}]}
+{"items":[{"no":string,"description":string,"qty":number|null,"unit":string,"rate":number|null,"amount":number|null,"section":string}]}
 
 Rules:
 - One entry per priced/scoped line item, in document order.
-- "description" is the work/material description, cleaned of leading numbering. Keep it specific (e.g. "Supply and install 5.5kW submersible pump").
+- "no" is the item's own reference number or code exactly as printed in the document's "Item"/"No."/"Ref" column (e.g. "1.1.1", "2.3", "A", "PC-3", "1.3.14") — copy it verbatim, including any letters or dot-numbering, as a string. Leave it "" only if the document truly prints no number/code for that row. Never invent or renumber — this must match the source document exactly so the app's item list lines up with the printed BQ/PO/quotation.
+- "description" is the work/material description, cleaned of leading numbering (the numbering belongs in "no", not repeated in the description). Keep it specific (e.g. "Supply and install 5.5kW submersible pump").
 - "qty" is the quantity as a number (null if absent). "unit" is the unit of measure ("set","nos","lot","m","m2", etc; "" if absent).
 - "rate" is the UNIT rate in RM as a number, ONLY if a separate rate/unit-price figure is actually printed for that line. Leave it null if the document shows no rate column value for that row — do not compute or infer it.
 - "amount" is the line TOTAL in RM, taken directly from an "Amount"/"Total"/"Total Amount" column if the document prints one for that row. This is very often present even when "rate" is blank (common for lump-sum "L/S"/"lot" items, or BQs that only show a rate once for a group of rows but print the amount per row). Extract "amount" independently of "rate" — never assume amount = qty × rate, read what is actually printed. Leave null only if truly no figure is shown for that row.
@@ -187,6 +188,7 @@ exports.extractItems = onCall(
     };
     const items = (Array.isArray(parsed.items) ? parsed.items : [])
       .map(it => ({
+        no: String(it.no || '').trim(),   // the source document's own item number/code, verbatim
         description: String(it.description || '').trim(),
         qty: num(it.qty),
         unit: String(it.unit || '').trim(),

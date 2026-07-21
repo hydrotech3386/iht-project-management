@@ -810,13 +810,13 @@ function detailItems(p){
         '<button class="btn btn-add btn-sm edit-only" data-add-item>+ Item</button>'+
       '</div></div>'+
     (its.length?
-      '<table class="item-table"><thead><tr><th style="width:34px">#</th><th>Description</th><th class="num-col">Qty</th><th>Unit</th>'+
+      '<table class="item-table"><thead><tr><th style="width:52px">No.</th><th>Description</th><th class="num-col">Qty</th><th>Unit</th>'+
         (money?'<th class="amt">Value</th>':'')+
         '<th style="width:170px">% Complete</th><th style="width:44px">Photos</th>'+(canEdit()?'<th style="width:40px"></th>':'')+'</tr></thead><tbody>'+
       its.map(function(it,idx){
         var pct=Number(it.percent)||0; var np=itemPhotos(it.id).length;
         return '<tr data-item="'+it.id+'">'+
-          '<td class="num-col">'+(it.no||idx+1)+'</td>'+
+          '<td class="num-col">'+esc(it.no||(idx+1))+'</td>'+
           '<td class="item-desc">'+esc(it.description||'')+(it.section?'<div style="font-size:11px;color:#4fc3f7">'+esc(it.section)+'</div>':'')+'</td>'+
           '<td class="num-col">'+(it.qty!=null&&it.qty!==''?fmtNum(it.qty):'')+'</td>'+
           '<td>'+esc(it.unit||'')+'</td>'+
@@ -994,7 +994,7 @@ function openItemForm(it){
       '<div class="field full"><label>Description *</label><input type="text" id="ifDesc" value="'+esc(it.description||'')+'" autofocus></div>'+
       '<div class="field full"><label>Project</label><select id="ifProj">'+projOpts+'</select></div>'+
       field('Section / Category','ifSection',it.section)+
-      field('Line No.','ifNo',it.no)+
+      field('Item No.','ifNo',it.no)+
       field('Quantity','ifQty',it.qty,'number')+
       field('Unit','ifUnit',it.unit)+
       (canSeePrice()? field('Unit Rate (RM)','ifRate',it.rate,'number')+field('Value (RM)','ifAmount',it.amount,'number') : '')+
@@ -1094,6 +1094,7 @@ function showExtractPreview(p, items, sourceLabel){
     var inp=function(w){ return 'style="width:'+w+'px;background:#0f3460;border:1px solid #23325a;color:#fff;border-radius:6px;padding:6px;text-align:right"'; };
     var amt=(it.amount!=null&&it.amount!=='')? it.amount : ((it.qty!=null&&it.qty!==''&&it.rate!=null&&it.rate!=='')? round2(it.qty*it.rate) : '');
     return '<tr data-row="'+i+'"'+(amt===''?' class="no-value"':'')+'>'+
+      '<td><input type="text" data-f="no" value="'+esc(it.no||'')+'" style="width:54px;background:#0f3460;border:1px solid #23325a;color:#fff;border-radius:6px;padding:6px" title="Item number/code from the document"></td>'+
       '<td><input type="text" data-f="description" value="'+esc(it.description||'')+'" style="width:100%;background:#0f3460;border:1px solid #23325a;color:#fff;border-radius:6px;padding:6px"></td>'+
       '<td><input type="number" data-f="qty" value="'+(it.qty==null?'':it.qty)+'" '+inp(66)+'></td>'+
       '<td><input type="text" data-f="unit" value="'+esc(it.unit||'')+'" style="width:60px;background:#0f3460;border:1px solid #23325a;color:#fff;border-radius:6px;padding:6px"></td>'+
@@ -1105,8 +1106,8 @@ function showExtractPreview(p, items, sourceLabel){
   }).join('');
   openModal(
     '<div class="modal-head"><div><h2>Review Extracted Items</h2><div class="sub">'+items.length+' items from '+esc(sourceLabel)+' — edit or remove, then add.</div></div><button class="modal-close" data-close>&times;</button></div>'+
-    '<div class="extract-note">Amount is read directly from the document\'s Amount/Total column, independent of Rate — a blank Rate with a filled Amount is normal for lump-sum items. Check the highlighted rows'+(noValueCount?' ('+noValueCount+' with no value found)':'')+' — that usually means the source genuinely has no price there.</div>'+
-    '<div style="max-height:52vh;overflow:auto"><table class="item-table"><thead><tr><th>Description</th><th>Qty</th><th>Unit</th>'+(money?'<th>Rate</th><th>Amount</th>':'')+'<th></th></tr></thead><tbody id="exBody">'+rows+'</tbody></table></div>'+
+    '<div class="extract-note">No. is the item number as printed in the document, so it lines up with the BQ/PO/quotation. Amount is read directly from the document\'s Amount/Total column, independent of Rate — a blank Rate with a filled Amount is normal for lump-sum items. Check the highlighted rows'+(noValueCount?' ('+noValueCount+' with no value found)':'')+' — that usually means the source genuinely has no price there.</div>'+
+    '<div style="max-height:52vh;overflow:auto"><table class="item-table"><thead><tr><th>No.</th><th>Description</th><th>Qty</th><th>Unit</th>'+(money?'<th>Rate</th><th>Amount</th>':'')+'<th></th></tr></thead><tbody id="exBody">'+rows+'</tbody></table></div>'+
     '<div class="modal-foot"><button class="btn btn-secondary" data-close>Cancel</button><button class="btn btn-add" id="exAddBtn">Add '+items.length+' Items</button></div>', true
   );
   bindClose();
@@ -1119,7 +1120,7 @@ function showExtractPreview(p, items, sourceLabel){
       var qty=g('qty')===''?'':Number(g('qty')); var rate=g('rate')===''?'':Number(g('rate'));
       // amount comes from the document/review edit; only fall back to qty*rate if it was never given
       var amount=g('amount')===''? ((qty!==''&&rate!=='')?qty*rate:'') : Number(g('amount'));
-      put('items', { id:uid(), projectId:p.id, description:desc, qty:qty, unit:g('unit'), rate:rate,
+      put('items', { id:uid(), projectId:p.id, no:g('no'), description:desc, qty:qty, unit:g('unit'), rate:rate,
         amount:amount, percent:0, order:ord++, createdAt:Date.now() });
       n++;
     });
@@ -1159,11 +1160,12 @@ function renderItemsTable(){
   }).sort(function(a,b){ var d=(a.projectId||'').localeCompare(b.projectId||''); if(d) return d; return (a.order||0)-(b.order||0); });
   if(!list.length){ wrap.innerHTML='<div class="empty-state">No items. Open a project and extract or add items.</div>'; return; }
   var money=canSeePrice();
-  wrap.innerHTML='<table class="item-table"><thead><tr><th>Project</th><th>Description</th><th class="num-col">Qty</th><th>Unit</th>'+
+  wrap.innerHTML='<table class="item-table"><thead><tr><th>Project</th><th style="width:52px">No.</th><th>Description</th><th class="num-col">Qty</th><th>Unit</th>'+
     (money?'<th class="amt">Value</th>':'')+'<th style="width:170px">% Complete</th><th style="width:44px">Photos</th></tr></thead><tbody>'+
     list.map(function(it){
       var pct=Number(it.percent)||0; var np=itemPhotos(it.id).length;
       return '<tr><td style="color:#4fc3f7;cursor:pointer" data-open="'+it.projectId+'">'+esc(projName(it.projectId))+'</td>'+
+        '<td class="num-col">'+esc(it.no||'')+'</td>'+
         '<td class="item-desc">'+esc(it.description||'')+'</td>'+
         '<td class="num-col">'+(it.qty!=null&&it.qty!==''?fmtNum(it.qty):'')+'</td>'+
         '<td>'+esc(it.unit||'')+'</td>'+
@@ -1436,10 +1438,10 @@ function openClaim(id){
 function claimTableHTML(lines, t, forPrint){
   var cls=forPrint?'':'item-table';
   return '<table class="'+cls+'" '+(forPrint?'border="1" cellspacing="0" cellpadding="5"':'')+'>'+
-    '<thead><tr><th>#</th><th>Description</th><th>Unit</th><th class="num-col">Qty</th><th class="amt">Contract (RM)</th>'+
+    '<thead><tr><th>No.</th><th>Description</th><th>Unit</th><th class="num-col">Qty</th><th class="amt">Contract (RM)</th>'+
     '<th class="amt">Prev %</th><th class="amt">To Date %</th><th class="amt">Value To Date</th><th class="amt">This Claim</th></tr></thead><tbody>'+
     lines.map(function(l,i){
-      return '<tr><td>'+(l.item.no||i+1)+'</td><td>'+esc(l.item.description||'')+'</td>'+
+      return '<tr><td>'+esc(l.item.no||(i+1))+'</td><td>'+esc(l.item.description||'')+'</td>'+
         '<td>'+esc(l.item.unit||'')+'</td><td class="num-col">'+(l.item.qty!==''&&l.item.qty!=null?fmtNum(l.item.qty):'')+'</td>'+
         '<td class="amt">'+fmtNum(l.value)+'</td>'+
         '<td class="amt">'+l.prevPct+'%</td><td class="amt">'+l.thisPct+'%</td>'+
