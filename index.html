@@ -1009,10 +1009,23 @@ function wireDetailActions(p){
 
 /* ---------- milestones ---------- */
 function addMilestone(p){
-  var name=prompt('Milestone name:'); if(!name) return;
-  var date=prompt('Target date (YYYY-MM-DD), optional:')||'';
-  var arr=(p.milestones||[]).slice(); arr.push({name:name.trim(),date:date.trim(),done:false});
-  put('projects', Object.assign({}, p, {milestones:arr})); renderProjectDetail();
+  openModal(
+    '<div class="modal-head"><h2>New Milestone</h2><button class="modal-close" data-close>&times;</button></div>'+
+    '<div class="form-grid">'+
+      field('Milestone Name','msName','','text',true,true)+
+      field('Target Date','msDate','','date')+
+    '</div>'+
+    '<div class="modal-foot"><button class="btn btn-secondary" data-close>Cancel</button>'+
+      '<button class="btn btn-primary" id="msSaveBtn">Add</button></div>'
+  );
+  bindClose();
+  document.getElementById('msSaveBtn').addEventListener('click', function(){
+    var name=val('msName').trim(); if(!name){ toast('Milestone name required','err'); return; }
+    var arr=(p.milestones||[]).slice(); arr.push({name:name, date:val('msDate'), done:false});
+    put('projects', Object.assign({}, p, {milestones:arr}));
+    closeModal(); toast('Milestone added','ok'); renderProjectDetail();
+  });
+  document.getElementById('msName').addEventListener('keydown', function(e){ if(e.key==='Enter') document.getElementById('msSaveBtn').click(); });
 }
 /* ---------- folder actions ---------- */
 /* parentId: explicit target when called from a context with its own folder
