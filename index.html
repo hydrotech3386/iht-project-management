@@ -239,6 +239,12 @@ button.btn{padding:8px 16px;border:none;border-radius:6px;cursor:pointer;font-si
 .photo-meta{font-size:10px;color:#7a8bb0;padding:0 8px 7px}
 .photo-del{position:absolute;top:5px;right:5px;background:rgba(192,57,43,.9);border:none;color:#fff;border-radius:5px;width:22px;height:22px;cursor:pointer;font-size:13px;line-height:1}
 .photo-item-tag{position:absolute;top:5px;left:5px;background:rgba(15,52,96,.92);color:#4fc3f7;font-size:9px;font-weight:700;padding:2px 6px;border-radius:6px;max-width:76%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.picker-card{cursor:pointer}
+.picker-card img{opacity:.72}
+.picker-card.picker-selected{outline:3px solid #e94560}
+.picker-card.picker-selected img{opacity:1}
+.picker-check{position:absolute;top:5px;right:5px;background:#e94560;color:#fff;border-radius:50%;width:20px;height:20px;font-size:12px;line-height:20px;text-align:center;display:none}
+.picker-card.picker-selected .picker-check{display:block}
 .lightbox{position:fixed;inset:0;background:rgba(0,0,0,.92);z-index:700;display:none;align-items:center;justify-content:center;flex-direction:column;padding:20px}
 .lightbox.open{display:flex}
 .lightbox img{max-width:94vw;max-height:82vh;object-fit:contain;border-radius:8px}
@@ -1710,6 +1716,7 @@ function newClaimFlow(presetPid){
         '<div class="dropzone" id="ncPhotoDrop">Drop photos here or <b>click to add</b>'+
           '<input type="file" id="ncPhotoInput" accept="image/*" multiple capture="environment" style="display:none"></div>'+
         '<div class="photo-grid" id="ncPhotoPreview"></div>'+
+        '<div id="ncExistingWrap" style="margin-top:10px"></div>'+
       '</div>'+
     '</div>'+
     '<div class="extract-note" id="ncHint"></div>'+
@@ -1718,38 +1725,27 @@ function newClaimFlow(presetPid){
   );
   bindClose();
   var sel=document.getElementById('ncProj');
-  function refreshHint(){
-    var pid=sel.value;
-    var btn=document.getElementById('ncCreate');
-    if(!pid){
-      document.getElementById('ncHint').innerHTML='Choose the project this claim belongs to.';
-      if(btn){ btn.disabled=true; btn.style.opacity=.5; btn.style.cursor='not-allowed'; }
-      return;
-    }
-    if(btn){ btn.disabled=false; btn.style.opacity=1; btn.style.cursor='pointer'; }
-    var cs=projectClaims(pid); var last=cs[cs.length-1];
-    var lastTotal=last? claimTotals(last).toDate : 0;
-    var np=projectItems(pid).length;
-    document.getElementById('ncHint').innerHTML =
-      'This will be <b>Claim #'+nextClaimNo(pid)+'</b> for <b>'+esc(projName(pid))+'</b> ('+np+' items). '+
-      (last? 'Previous claim #'+last.claimNo+' was '+fmtRM(lastTotal)+' to date — defaulting “previous payments” to that.'
-           : 'No earlier claims, so previous payments default to RM 0.');
-    var prevEl=document.getElementById('ncPrev');
-    if(prevEl && !prevEl.dataset.touched) prevEl.value = lastTotal? lastTotal : '';
-  }
-  sel.addEventListener('change', refreshHint);
-  document.getElementById('ncPrev').addEventListener('input', function(){ this.dataset.touched='1'; });
-  refreshHint();
 
-  var pendingPhotos=[];
+  var pendingPhotos=[];      // fresh files staged for upload
+  var selectedExisting=[];   // photo records already on the project, to be linked (not re-uploaded)
+  var existingExpanded=false;
+
   function renderPending(){
     var grid=document.getElementById('ncPhotoPreview');
     grid.innerHTML=pendingPhotos.map(function(f,i){
       return '<div class="photo-card"><img src="'+URL.createObjectURL(f)+'">'+
         '<button class="photo-del" data-pend-del="'+i+'" title="Remove">&times;</button></div>';
+    }).join('')+selectedExisting.map(function(ph){
+      return '<div class="photo-card"><img src="'+(ph.url||ph.dataUrl||'')+'">'+
+        '<span class="photo-item-tag">From project</span>'+
+        '<button class="photo-del" data-exist-del="'+ph.id+'" title="Remove">&times;</button></div>';
     }).join('');
     grid.querySelectorAll('[data-pend-del]').forEach(function(b){ b.addEventListener('click', function(){
       pendingPhotos.splice(Number(b.dataset.pendDel),1); renderPending();
+    }); });
+    grid.querySelectorAll('[data-exist-del]').forEach(function(b){ b.addEventListener('click', function(){
+      selectedExisting=selectedExisting.filter(function(ph){ return ph.id!==b.dataset.existDel; });
+      renderPending(); renderExistingSection();
     }); });
   }
   function addPending(files){
@@ -1762,6 +1758,62 @@ function newClaimFlow(presetPid){
   ['dragover','dragenter'].forEach(function(ev){ ncDrop.addEventListener(ev,function(e){ e.preventDefault(); ncDrop.classList.add('drag-over'); }); });
   ['dragleave','dragend'].forEach(function(ev){ ncDrop.addEventListener(ev,function(){ ncDrop.classList.remove('drag-over'); }); });
   ncDrop.addEventListener('drop', function(e){ e.preventDefault(); ncDrop.classList.remove('drag-over'); addPending(e.dataTransfer.files); });
+
+  /* an inline (not a separate modal) picker, so switching to it never loses
+     the claim date/notes/amount the user has already typed into this form */
+  function renderExistingSection(){
+    var wrap=document.getElementById('ncExistingWrap');
+    var pid=sel.value;
+    if(!pid){ wrap.innerHTML=''; return; }
+    var phs=projectPhotos(pid);
+    if(!phs.length){ wrap.innerHTML=''; return; }
+    wrap.innerHTML =
+      '<button type="button" class="btn btn-secondary btn-sm" id="ncToggleExisting">📁 '+(existingExpanded?'Hide project photos':'Select from project photos')+' ('+phs.length+')</button>'+
+      (existingExpanded?'<div class="photo-grid" id="ncExistingGrid" style="margin-top:8px">'+
+        phs.map(function(ph){
+          var isSel=selectedExisting.some(function(s){ return s.id===ph.id; });
+          return '<div class="photo-card picker-card'+(isSel?' picker-selected':'')+'" data-exist-pick="'+ph.id+'">'+
+            '<div class="picker-check">✓</div>'+
+            '<img src="'+(ph.url||ph.dataUrl||'')+'">'+
+            (ph.itemId?'<span class="photo-item-tag">'+esc(itemDesc(ph.itemId).slice(0,40))+'</span>':'')+
+            (ph.caption?'<div class="photo-cap">'+esc(ph.caption)+'</div>':'')+
+          '</div>';
+        }).join('')+'</div>':'');
+    var tb=document.getElementById('ncToggleExisting');
+    if(tb) tb.addEventListener('click', function(){ existingExpanded=!existingExpanded; renderExistingSection(); });
+    wrap.querySelectorAll('[data-exist-pick]').forEach(function(card){
+      card.addEventListener('click', function(){
+        var id=card.dataset.existPick, idx=selectedExisting.findIndex(function(s){ return s.id===id; });
+        if(idx>=0) selectedExisting.splice(idx,1); else selectedExisting.push(state.photos[id]);
+        renderExistingSection(); renderPending();
+      });
+    });
+  }
+
+  function refreshHint(){
+    var pid=sel.value;
+    var btn=document.getElementById('ncCreate');
+    if(!pid){
+      document.getElementById('ncHint').innerHTML='Choose the project this claim belongs to.';
+      if(btn){ btn.disabled=true; btn.style.opacity=.5; btn.style.cursor='not-allowed'; }
+      renderExistingSection();
+      return;
+    }
+    if(btn){ btn.disabled=false; btn.style.opacity=1; btn.style.cursor='pointer'; }
+    var cs=projectClaims(pid); var last=cs[cs.length-1];
+    var lastTotal=last? claimTotals(last).toDate : 0;
+    var np=projectItems(pid).length;
+    document.getElementById('ncHint').innerHTML =
+      'This will be <b>Claim #'+nextClaimNo(pid)+'</b> for <b>'+esc(projName(pid))+'</b> ('+np+' items). '+
+      (last? 'Previous claim #'+last.claimNo+' was '+fmtRM(lastTotal)+' to date — defaulting “previous payments” to that.'
+           : 'No earlier claims, so previous payments default to RM 0.');
+    var prevEl=document.getElementById('ncPrev');
+    if(prevEl && !prevEl.dataset.touched) prevEl.value = lastTotal? lastTotal : '';
+    existingExpanded=false; selectedExisting=[]; renderPending(); renderExistingSection();
+  }
+  sel.addEventListener('change', refreshHint);
+  document.getElementById('ncPrev').addEventListener('input', function(){ this.dataset.touched='1'; });
+  refreshHint();
 
   document.getElementById('ncCreate').addEventListener('click', function(){
     var pid=val('ncProj');
@@ -1776,6 +1828,7 @@ function newClaimFlow(presetPid){
       notes:val('ncNotes').trim(), lines:lines,
       createdAt:Date.now(), createdBy: currentUser? (currentUser.name||currentUser.email||'') : ''
     });
+    selectedExisting.forEach(function(ph){ put('photos', Object.assign({}, ph, {claimId:claim.id})); });
     closeModal(); toast('Claim #'+claim.claimNo+' created','ok');
     if(pendingPhotos.length){ addClaimPhotos(pendingPhotos, pid, claim.id, function(){ openClaim(claim.id); }); }
     else openClaim(claim.id);
@@ -1803,8 +1856,9 @@ function openClaim(id){
     (c.notes?'<div class="panel" style="margin-top:12px"><h3>Notes</h3><div style="font-size:13px;white-space:pre-wrap;color:#ccd3e0">'+esc(c.notes)+'</div></div>':'')+
     '<div class="panel" style="margin-top:12px"><h3>Progress Photos</h3>'+
       (canOperate(p)?'<div class="dropzone" id="clPhotoDrop">Drop photos here or <b>click to add</b>'+
-        '<input type="file" id="clPhotoInput" accept="image/*" multiple capture="environment" style="display:none"></div>':'')+
-      (phs.length?'<div class="photo-grid">'+phs.map(function(x){return photoCardHTML(x,false,false);}).join('')+'</div>'
+        '<input type="file" id="clPhotoInput" accept="image/*" multiple capture="environment" style="display:none"></div>'+
+        '<button class="btn btn-secondary btn-sm" id="clPickExisting" style="margin-bottom:12px">📁 Select from Project Photos</button>':'')+
+      (phs.length?'<div class="photo-grid">'+phs.map(function(x){return photoCardHTML(x,true,false,true);}).join('')+'</div>'
                 :'<div class="empty-state" style="padding:16px 0">No progress photos attached.</div>')+
     '</div>', true
   );
@@ -1825,6 +1879,13 @@ function openClaim(id){
     ['dragleave','dragend'].forEach(function(ev){ cpd.addEventListener(ev,function(){ cpd.classList.remove('drag-over'); }); });
     cpd.addEventListener('drop', function(e){ e.preventDefault(); cpd.classList.remove('drag-over'); addClaimPhotos(e.dataTransfer.files, c.projectId, c.id, function(){ openClaim(id); }); });
   }
+  var cpe=document.getElementById('clPickExisting');
+  if(cpe) cpe.addEventListener('click', function(){
+    openExistingPhotoPicker(c.projectId, phs.map(function(x){ return x.id; }), function(ids){
+      ids.forEach(function(pid){ var ph=state.photos[pid]; if(ph) put('photos', Object.assign({}, ph, {claimId:c.id})); });
+      openClaim(id);
+    });
+  });
 }
 function claimTableHTML(lines, t, forPrint){
   var cls=forPrint?'':'item-table';
@@ -1896,6 +1957,7 @@ function claimDocHTML(c){
     (c.notes?'<div class="cd-notes"><b>Notes:</b><br>'+esc(c.notes).replace(/\n/g,'<br>')+'</div>':'')+
     (phs.length?'<div class="cd-photos"><h3>Progress Photos</h3><div class="cd-photo-grid">'+
       phs.map(function(ph){ return '<div class="cd-photo-item"><img src="'+(ph.url||ph.dataUrl||'')+'">'+
+        (ph.itemId?'<div class="cap"><b>'+esc(itemDesc(ph.itemId))+'</b></div>':'')+
         (ph.caption?'<div class="cap">'+esc(ph.caption)+'</div>':'')+'</div>'; }).join('')+
     '</div></div>':'')+
     '<table class="cd-sign"><tr>'+
@@ -2145,11 +2207,13 @@ function deletePhoto(ph, silent){
   remove('photos', ph.id); if(!silent) toast('Photo deleted');
 }
 
-function photoCardHTML(ph, showItem, allowMove){
+function photoCardHTML(ph, showItem, allowMove, detachMode){
   return '<div class="photo-card">'+
     '<img src="'+(ph.url||ph.dataUrl||'')+'" data-ph-open="'+ph.id+'" alt="'+esc(ph.caption||ph.name||'')+'" loading="lazy">'+
     (showItem && ph.itemId? '<span class="photo-item-tag">'+esc(itemDesc(ph.itemId).slice(0,40))+'</span>':'')+
-    (canOperate(state.projects[ph.projectId])?'<button class="photo-del" data-ph-del="'+ph.id+'" title="Delete">×</button>':'')+
+    (canOperate(state.projects[ph.projectId])?
+      (detachMode?'<button class="photo-del" data-ph-detach="'+ph.id+'" title="Remove from this claim (keeps the photo itself)">×</button>'
+                 :'<button class="photo-del" data-ph-del="'+ph.id+'" title="Delete">×</button>'):'')+
     (canOperate(state.projects[ph.projectId])&&allowMove?'<button class="photo-move" data-ph-move="'+ph.id+'" title="Move to folder">📁</button>':'')+
     (ph.caption?'<div class="photo-cap">'+esc(ph.caption)+'</div>':'')+
     '<div class="photo-meta">'+fmtDate((ph.uploadedAt||'').slice(0,10))+(ph.uploadedBy?' • '+esc(ph.uploadedBy):'')+'</div>'+
@@ -2160,6 +2224,46 @@ function wirePhotoCards(root, after){
   root.querySelectorAll('[data-ph-del]').forEach(function(b){ b.addEventListener('click', function(){
     if(confirm('Delete this photo?')){ deletePhoto(state.photos[b.dataset.phDel]); if(after) after(); }
   }); });
+  root.querySelectorAll('[data-ph-detach]').forEach(function(b){ b.addEventListener('click', function(){
+    var ph=state.photos[b.dataset.phDetach]; if(!ph) return;
+    if(confirm('Remove this photo from the claim? The photo itself is not deleted.')){
+      put('photos', Object.assign({}, ph, {claimId:''})); if(after) after();
+    }
+  }); });
+}
+/* modal letting the user pick from photos already on the project (instead of
+   uploading fresh ones) — used when attaching evidence to a claim */
+function openExistingPhotoPicker(pid, excludeIds, onConfirm){
+  var exclude={}; (excludeIds||[]).forEach(function(id){ exclude[id]=1; });
+  var phs=projectPhotos(pid).filter(function(ph){ return !exclude[ph.id]; });
+  var selected={};
+  openModal(
+    '<div class="modal-head"><h2>Select Project Photos</h2><button class="modal-close" data-close>&times;</button></div>'+
+    (phs.length?'<div class="photo-grid" id="pickerGrid">'+phs.map(function(ph){
+      return '<div class="photo-card picker-card" data-pick="'+ph.id+'">'+
+        '<div class="picker-check">✓</div>'+
+        '<img src="'+(ph.url||ph.dataUrl||'')+'">'+
+        (ph.itemId?'<span class="photo-item-tag">'+esc(itemDesc(ph.itemId).slice(0,40))+'</span>':'')+
+        (ph.caption?'<div class="photo-cap">'+esc(ph.caption)+'</div>':'')+
+      '</div>';
+    }).join('')+'</div>':'<div class="empty-state">No other photos on this project yet.</div>')+
+    '<div class="modal-foot"><button class="btn btn-secondary" data-close>Cancel</button>'+
+      '<button class="btn btn-primary" id="pickerConfirm">Attach Selected</button></div>'
+  );
+  bindClose();
+  modalBox.querySelectorAll('[data-pick]').forEach(function(card){
+    card.addEventListener('click', function(){
+      var id=card.dataset.pick;
+      if(selected[id]){ delete selected[id]; card.classList.remove('picker-selected'); }
+      else { selected[id]=true; card.classList.add('picker-selected'); }
+    });
+  });
+  var pc=document.getElementById('pickerConfirm');
+  if(pc) pc.addEventListener('click', function(){
+    var ids=Object.keys(selected);
+    closeModal();
+    if(ids.length) onConfirm(ids);
+  });
 }
 
 /* per-item photo gallery */
