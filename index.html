@@ -2245,6 +2245,7 @@ function renderUsers(){
   if(!isAdmin()){ el.innerHTML='<div class="empty-state">Admins only.</div>'; return; }
   if(!FB_ENABLED){ el.innerHTML='<div class="panel"><div style="color:#f5b041">User management is available once Firebase is connected. In local mode there is no login.</div></div>'; return; }
   var users=Object.values(state.users);
+  var roster=rosterList();
   el.innerHTML='<div class="panel"><h3>Users &amp; Roles</h3>'+
     '<div style="font-size:12px;color:#7a8bb0;margin-bottom:12px">A user can hold more than one role at once — check every box that applies. '+
       '<b>Project Engineer</b> edits everything but never sees rates, values or claims. '+
@@ -2263,7 +2264,21 @@ function renderUsers(){
         }).join('')+
       '</tr>';
     }).join('')+
-    '</tbody></table></div>';
+    '</tbody></table></div>'+
+    '<div class="panel"><h3>Named Salesmen (no login)</h3>'+
+    '<div style="font-size:12px;color:#7a8bb0;margin-bottom:12px">People a project can be assigned to for reporting, without an account — they never sign in and this grants no access. Used when a real Team member above hasn\'t (or won\'t) sign up.</div>'+
+    (roster.length? '<table class="item-table"><thead><tr><th>Name</th><th style="width:60px"></th></tr></thead><tbody>'+
+      roster.map(function(r){
+        return '<tr><td><input type="text" class="name-input" value="'+esc(r.name)+'" data-roster-name="'+r.id+'"></td>'+
+          '<td><button class="btn btn-danger btn-sm" data-roster-del="'+r.id+'">×</button></td></tr>';
+      }).join('')+'</tbody></table>' : '')+
+    '<button class="btn btn-add btn-sm" id="rosterAddBtn" style="margin-top:10px">+ Add Named Salesman</button>'+
+    '</div>'+
+    '<div class="panel"><h3>Data Backup</h3>'+
+    '<div style="font-size:12px;color:#7a8bb0;margin-bottom:12px">A full copy of every project, item, document, photo, claim, payment and folder record downloads as one JSON file — nothing is uploaded anywhere. '+
+      'The cloud also takes its own automatic snapshot every night, independent of this app, in case of a bug here.</div>'+
+    '<button class="btn btn-secondary btn-sm" id="backupNowBtn">⭳ Backup Now (download JSON)</button>'+
+    '</div>';
   el.querySelectorAll('[data-role-cb]').forEach(function(cb){ cb.addEventListener('change', function(){
     var uid=cb.dataset.roleCb, u=state.users[uid]; if(!u) return;
     var roles=normalizeRoles(u);
@@ -2287,16 +2302,6 @@ function renderUsers(){
     if(currentUser && u.id===currentUser.uid){ currentUser.name=inp.value.trim(); paintUserInfo(); }
   }); });
 
-  var roster=rosterList();
-  el.innerHTML += '<div class="panel"><h3>Named Salesmen (no login)</h3>'+
-    '<div style="font-size:12px;color:#7a8bb0;margin-bottom:12px">People a project can be assigned to for reporting, without an account — they never sign in and this grants no access. Used when a real Team member above hasn\'t (or won\'t) sign up.</div>'+
-    (roster.length? '<table class="item-table"><thead><tr><th>Name</th><th style="width:60px"></th></tr></thead><tbody>'+
-      roster.map(function(r){
-        return '<tr><td><input type="text" class="name-input" value="'+esc(r.name)+'" data-roster-name="'+r.id+'"></td>'+
-          '<td><button class="btn btn-danger btn-sm" data-roster-del="'+r.id+'">×</button></td></tr>';
-      }).join('')+'</tbody></table>' : '')+
-    '<button class="btn btn-add btn-sm" id="rosterAddBtn" style="margin-top:10px">+ Add Named Salesman</button>'+
-  '</div>';
   el.querySelectorAll('[data-roster-name]').forEach(function(inp){ inp.addEventListener('change', function(){
     var r=state.roster[inp.dataset.rosterName]; if(!r) return;
     var n=inp.value.trim(); if(!n){ toast('Name cannot be empty','err'); inp.value=r.name; return; }
@@ -2314,12 +2319,6 @@ function renderUsers(){
     var name=prompt('Name of the salesman to add (no login needed):'); name=(name||'').trim(); if(!name) return;
     put('roster', {id:uid(), name:name, createdAt:Date.now()}); toast('Added '+name,'ok'); renderUsers();
   });
-
-  el.innerHTML += '<div class="panel"><h3>Data Backup</h3>'+
-    '<div style="font-size:12px;color:#7a8bb0;margin-bottom:12px">A full copy of every project, item, document, photo, claim, payment and folder record downloads as one JSON file — nothing is uploaded anywhere. '+
-      'The cloud also takes its own automatic snapshot every night, independent of this app, in case of a bug here.</div>'+
-    '<button class="btn btn-secondary btn-sm" id="backupNowBtn">⭳ Backup Now (download JSON)</button>'+
-  '</div>';
   var bnb=document.getElementById('backupNowBtn'); if(bnb) bnb.addEventListener('click', backupAllData);
 }
 function backupAllData(){
