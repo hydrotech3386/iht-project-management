@@ -5,11 +5,15 @@
  * extractProjectInfo — reads the same kind of document and returns just the
  *                       header info (project name / client / site) so the
  *                       "New Project" form can auto-fill itself.
+ * scheduledBackup    — daily snapshot of the whole pm/ database to Storage,
+ *                       independent of anything a client (or a client-side
+ *                       bug) could do.
  *
- * Both use Claude's document reading. The Anthropic API key lives in Secret
- * Manager and never reaches the browser.
+ * Both AI functions use Claude's document reading. The Anthropic API key
+ * lives in Secret Manager and never reaches the browser.
  */
 const { onCall, HttpsError } = require('firebase-functions/v2/https');
+const { onSchedule } = require('firebase-functions/v2/scheduler');
 const { defineSecret } = require('firebase-functions/params');
 const admin = require('firebase-admin');
 
@@ -271,5 +275,43 @@ exports.extractProjectInfo = onCall(
     const result = { name: clean(parsed.name), client: clean(parsed.client), site: clean(parsed.site) };
     console.log(`extracted project info from ${fileName || storagePath}:`, JSON.stringify(result));
     return result;
+  }
+);
+
+/* =====================================================================
+   scheduledBackup — daily snapshot of the whole pm/ RTDB tree to Storage.
+   Runs server-side on a timer, so it protects against client-side bugs
+   (a bad UI action, a botched script) as well as accidental deletes — it
+   doesn't depend on anyone remembering to click a button. Photos/documents
+   themselves already live durably in Storage; this snapshot preserves the
+   records that point to them (and everything else) so a bad write can be
+   diffed against yesterday's state and manually reverted if needed.
+   ===================================================================== */
+exports.scheduledBackup = onSchedule(
+  {
+    region: 'asia-southeast1',
+    schedule: 'every day 02:00',
+    timeZone: 'Asia/Kuala_Lumpur',
+    timeoutSeconds: 300,
+    memory: '512MiB'
+  },
+  async () => {
+    const snap = await admin.database().ref('pm').once('value');
+    const json = JSON.stringify(snap.val() || {});
+    const stamp = new Date().toISOString().slice(0, 10); // YYYY-MM-DD
+    const path = `backups/pm-${stamp}.json`;
+    await admin.storage().bucket().file(path).save(json, { contentType: 'application/json' });
+    console.log(`backup written to ${path} (${(json.length / 1024).toFixed(0)} KB)`);
+
+    // keep 60 days of daily snapshots, prune older ones so storage doesn't grow forever
+    const cutoff = Date.now() - 60 * 24 * 60 * 60 * 1000;
+    const [files] = await admin.storage().bucket().getFiles({ prefix: 'backups/pm-' });
+    await Promise.all(files.map(async f => {
+      const m = f.name.match(/pm-(\d{4}-\d{2}-\d{2})\.json$/);
+      if (m && new Date(m[1]).getTime() < cutoff) {
+        try { await f.delete(); console.log('pruned old backup', f.name); }
+        catch (e) { console.error('prune failed', f.name, e.message); }
+      }
+    }));
   }
 );

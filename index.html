@@ -381,9 +381,9 @@ if (FB_ENABLED) {
 /* Every user must sign in and be given a role by an admin. There is no
    anonymous or public read-only mode. */
 var LS_KEY = 'iht_pm_v2';
-var COLS = ['projects','items','documents','photos','claims','folders','users','roster'];
+var COLS = ['projects','items','documents','photos','claims','folders','users','roster','payments'];
 
-var state = { projects:{}, items:{}, documents:{}, photos:{}, claims:{}, folders:{}, users:{}, roster:{} };
+var state = { projects:{}, items:{}, documents:{}, photos:{}, claims:{}, folders:{}, users:{}, roster:{}, payments:{} };
 var currentUser = null;
 var db = null, storage = null, auth = null, functions = null;
 
@@ -554,8 +554,12 @@ function projectPhotos(pid){ return Object.values(state.photos).filter(function(
   .sort(function(a,b){ return (b.uploadedAt||'')<(a.uploadedAt||'')?-1:1; }); }
 function itemPhotos(itemId){ return Object.values(state.photos).filter(function(p){ return p.itemId===itemId; })
   .sort(function(a,b){ return (b.uploadedAt||'')<(a.uploadedAt||'')?-1:1; }); }
+function claimPhotos(claimId){ return Object.values(state.photos).filter(function(p){ return p.claimId===claimId; })
+  .sort(function(a,b){ return (b.uploadedAt||'')<(a.uploadedAt||'')?-1:1; }); }
 function projectClaims(pid){ return Object.values(state.claims).filter(function(c){ return c.projectId===pid; })
   .sort(function(a,b){ return (a.claimNo||0)-(b.claimNo||0); }); }
+function projectPayments(pid){ return Object.values(state.payments).filter(function(x){ return x.projectId===pid; })
+  .sort(function(a,b){ return (b.date||'')<(a.date||'')?-1:1; }); }
 
 /* ---- folders (shared by Documents [kind='doc'] and Photos [kind='photo']) ---- */
 function subFolders(pid, kind, parentId){
@@ -835,11 +839,12 @@ function openProjectForm(p){
   });
   var del=modalBox.querySelector('[data-del]');
   if(del) del.addEventListener('click', function(){
-    if(!confirm('Delete this project and ALL its items, documents, photos, claims and folders?')) return;
+    if(!confirm('Delete this project and ALL its items, documents, photos, claims, payments and folders?')) return;
     projectItems(p.id).forEach(function(t){ remove('items', t.id); });
     projectDocs(p.id).forEach(function(d){ deleteDocument(d, true); });
     projectPhotos(p.id).forEach(function(ph){ deletePhoto(ph, true); });
     projectClaims(p.id).forEach(function(c){ remove('claims', c.id); });
+    projectPayments(p.id).forEach(function(x){ remove('payments', x.id); });
     Object.values(state.folders).filter(function(f){ return f.projectId===p.id; }).forEach(function(f){ remove('folders', f.id); });
     remove('projects', p.id); closeModal(); toast('Project deleted'); renderCurrent();
   });
@@ -1021,6 +1026,10 @@ function wireDetailActions(p){
   });
   var nc=modalBox.querySelector('[data-new-claim]'); if(nc) nc.addEventListener('click', function(){ newClaimFlow(p.id); });
   modalBox.querySelectorAll('[data-claim]').forEach(function(r){ r.addEventListener('click', function(){ openClaim(r.dataset.claim); }); });
+  var np=modalBox.querySelector('[data-new-payment]'); if(np) np.addEventListener('click', function(){ addPaymentFlow(p); });
+  modalBox.querySelectorAll('[data-pay-del]').forEach(function(b){ b.addEventListener('click', function(){
+    if(confirm('Delete this payment record?')){ remove('payments', b.dataset.payDel); renderProjectDetail(); }
+  }); });
   var ams=modalBox.querySelector('[data-add-ms]'); if(ams) ams.addEventListener('click', function(){ addMilestone(curProj()); });
   modalBox.querySelectorAll('[data-ms-toggle]').forEach(function(cb){ cb.addEventListener('change', function(){ toggleMilestone(curProj(), +cb.dataset.msToggle); }); });
   modalBox.querySelectorAll('[data-ms-del]').forEach(function(b){ b.addEventListener('click', function(){ delMilestone(curProj(), +b.dataset.msDel); }); });
@@ -1607,7 +1616,7 @@ function renderClaims(){
       (priceProjs.length?'<button class="btn btn-add spacer" id="newClaimBtn">+ New Claim</button>':'')+'</div>'+
     (list.length?
       '<table class="item-table"><thead><tr><th>Project</th><th style="width:70px">Claim</th><th style="width:100px">Date</th>'+
-        '<th class="amt">Contract</th><th class="amt">To Date</th><th class="amt">This Claim</th><th class="amt">Net Due</th><th style="width:90px">Status</th></tr></thead><tbody>'+
+        '<th class="amt">Contract</th><th class="amt">To Date</th><th class="amt">This Claim</th><th class="amt">Net Due</th></tr></thead><tbody>'+
       list.map(function(c){
         var t=claimTotals(c);
         return '<tr style="cursor:pointer" data-claim="'+c.id+'">'+
@@ -1617,8 +1626,7 @@ function renderClaims(){
           '<td class="amt">'+fmtRM(t.contract)+'</td>'+
           '<td class="amt">'+fmtRM(t.toDate)+'</td>'+
           '<td class="amt" style="color:#5dfc8d">'+fmtRM(t.thisAmt)+'</td>'+
-          '<td class="amt" style="color:#4fc3f7">'+fmtRM(t.netDue)+'</td>'+
-          '<td><span class="status-badge '+claimStatusClass(c.status)+'">'+esc(c.status||'draft')+'</span></td></tr>';
+          '<td class="amt" style="color:#4fc3f7">'+fmtRM(t.netDue)+'</td></tr>';
       }).join('')+'</tbody></table>'
     : '<div class="empty-state">No progress claims yet. Open a project or click “+ New Claim”.</div>');
 
@@ -1626,25 +1634,57 @@ function renderClaims(){
   var nb=document.getElementById('newClaimBtn'); if(nb) nb.addEventListener('click', function(){ newClaimFlow(claimProjFilter!=='all'?claimProjFilter:null); });
   el.querySelectorAll('[data-claim]').forEach(function(r){ r.addEventListener('click', function(){ openClaim(r.dataset.claim); }); });
 }
-function claimStatusClass(s){
-  return s==='certified'?'status-completed' : s==='submitted'?'status-in-progress' : 'status-planning';
-}
 
 /* ---- per-project Claims tab ---- */
 function detailClaims(p){
   var cs=projectClaims(p.id).slice().reverse();
+  var canPay=canSeePrice(p);
+  var pays=canPay? projectPayments(p.id) : [];
+  var payTotal=pays.reduce(function(s,x){ return s+(Number(x.amount)||0); }, 0);
   return '<div class="mini-toolbar"><div style="font-size:12px;color:#7a8bb0">'+cs.length+' claim(s)</div>'+
       (canEdit()?'<button class="btn btn-add btn-sm" data-new-claim>+ New Claim</button>':'')+'</div>'+
     (cs.length?
-      '<table class="item-table"><thead><tr><th style="width:70px">Claim</th><th>Date</th><th class="amt">To Date</th><th class="amt">This Claim</th><th class="amt">Net Due</th><th>Status</th></tr></thead><tbody>'+
+      '<table class="item-table"><thead><tr><th style="width:70px">Claim</th><th>Date</th><th class="amt">To Date</th><th class="amt">This Claim</th><th class="amt">Net Due</th></tr></thead><tbody>'+
       cs.map(function(c){
         var t=claimTotals(c);
         return '<tr style="cursor:pointer" data-claim="'+c.id+'"><td><b>#'+(c.claimNo||'')+'</b></td><td>'+fmtDate(c.date)+'</td>'+
           '<td class="amt">'+fmtRM(t.toDate)+'</td><td class="amt" style="color:#5dfc8d">'+fmtRM(t.thisAmt)+'</td>'+
-          '<td class="amt" style="color:#4fc3f7">'+fmtRM(t.netDue)+'</td>'+
-          '<td><span class="status-badge '+claimStatusClass(c.status)+'">'+esc(c.status||'draft')+'</span></td></tr>';
+          '<td class="amt" style="color:#4fc3f7">'+fmtRM(t.netDue)+'</td></tr>';
       }).join('')+'</tbody></table>'
-    : '<div class="empty-state" style="padding:22px 0">No claims yet for this project.</div>');
+    : '<div class="empty-state" style="padding:22px 0">No claims yet for this project.</div>')+
+    (canPay?
+      '<div class="panel" style="margin-top:16px"><div class="mini-toolbar" style="margin-bottom:8px"><h3 style="margin:0">Payments Received</h3>'+
+        '<button class="btn btn-add btn-sm" data-new-payment>+ Add Payment</button></div>'+
+      (pays.length?
+        '<table class="item-table"><thead><tr><th style="width:100px">Date</th><th class="amt">Amount</th><th>Reference / Notes</th><th style="width:40px"></th></tr></thead><tbody>'+
+        pays.map(function(x){
+          return '<tr><td>'+fmtDate(x.date)+'</td><td class="amt" style="color:#5dfc8d">'+fmtRM(x.amount)+'</td>'+
+            '<td>'+esc(x.reference||'')+'</td><td><button class="btn btn-danger btn-sm" data-pay-del="'+x.id+'">×</button></td></tr>';
+        }).join('')+'</tbody><tfoot><tr><td><b>Total Received</b></td><td class="amt"><b>'+fmtRM(payTotal)+'</b></td><td colspan="2"></td></tr></tfoot></table>'
+      : '<div class="empty-state" style="padding:16px 0">No payments recorded yet.</div>')+
+    '</div>' : '');
+}
+function addPaymentFlow(p){
+  openModal(
+    '<div class="modal-head"><h2>Record Payment Received</h2><button class="modal-close" data-close>&times;</button></div>'+
+    '<div class="form-grid">'+
+      field('Date Received','pyDate',todayISO(),'date')+
+      field('Amount (RM)','pyAmount','','number')+
+      '<div class="field full"><label>Reference / Notes</label><input type="text" id="pyRef" placeholder="e.g. cheque no., bank transfer ref, or which claim it relates to"></div>'+
+    '</div>'+
+    '<div class="modal-foot"><button class="btn btn-secondary" data-close>Cancel</button>'+
+      '<button class="btn btn-primary" id="pySave">Save</button></div>'
+  );
+  bindClose();
+  document.getElementById('pySave').addEventListener('click', function(){
+    var amt=Number(val('pyAmount'))||0;
+    if(amt<=0){ toast('Enter an amount greater than 0','err'); return; }
+    put('payments', {
+      id:uid(), projectId:p.id, date:val('pyDate')||todayISO(), amount:amt, reference:val('pyRef').trim(),
+      createdAt:Date.now(), createdBy: currentUser? (currentUser.name||currentUser.email||'') : ''
+    });
+    closeModal(); toast('Payment recorded','ok'); renderProjectDetail();
+  });
 }
 
 /* ---- create ---- */
@@ -1665,9 +1705,12 @@ function newClaimFlow(presetPid){
       field('Claim Date','ncDate',todayISO(),'date')+
       field('Work Done Up To','ncPeriod',todayISO(),'date')+
       field('Less: Previous Payments (RM)','ncPrev','','number')+
-      '<div class="field"><label>Status</label><select id="ncStatus">'+
-        ['draft','submitted','certified'].map(function(s){return '<option value="'+s+'">'+s+'</option>';}).join('')+'</select></div>'+
       '<div class="field full"><label>Notes</label><textarea id="ncNotes" placeholder="Optional remarks shown on the claim"></textarea></div>'+
+      '<div class="field full"><label>Progress Photos (optional)</label>'+
+        '<div class="dropzone" id="ncPhotoDrop">Drop photos here or <b>click to add</b>'+
+          '<input type="file" id="ncPhotoInput" accept="image/*" multiple capture="environment" style="display:none"></div>'+
+        '<div class="photo-grid" id="ncPhotoPreview"></div>'+
+      '</div>'+
     '</div>'+
     '<div class="extract-note" id="ncHint"></div>'+
     '<div class="modal-foot"><button class="btn btn-secondary" data-close>Cancel</button>'+
@@ -1698,6 +1741,28 @@ function newClaimFlow(presetPid){
   document.getElementById('ncPrev').addEventListener('input', function(){ this.dataset.touched='1'; });
   refreshHint();
 
+  var pendingPhotos=[];
+  function renderPending(){
+    var grid=document.getElementById('ncPhotoPreview');
+    grid.innerHTML=pendingPhotos.map(function(f,i){
+      return '<div class="photo-card"><img src="'+URL.createObjectURL(f)+'">'+
+        '<button class="photo-del" data-pend-del="'+i+'" title="Remove">&times;</button></div>';
+    }).join('');
+    grid.querySelectorAll('[data-pend-del]').forEach(function(b){ b.addEventListener('click', function(){
+      pendingPhotos.splice(Number(b.dataset.pendDel),1); renderPending();
+    }); });
+  }
+  function addPending(files){
+    Array.prototype.slice.call(files).forEach(function(f){ if(/^image\//.test(f.type)) pendingPhotos.push(f); });
+    renderPending();
+  }
+  var ncDrop=document.getElementById('ncPhotoDrop'), ncInput=document.getElementById('ncPhotoInput');
+  ncDrop.addEventListener('click', function(){ ncInput.click(); });
+  ncInput.addEventListener('change', function(){ addPending(ncInput.files); ncInput.value=''; });
+  ['dragover','dragenter'].forEach(function(ev){ ncDrop.addEventListener(ev,function(e){ e.preventDefault(); ncDrop.classList.add('drag-over'); }); });
+  ['dragleave','dragend'].forEach(function(ev){ ncDrop.addEventListener(ev,function(){ ncDrop.classList.remove('drag-over'); }); });
+  ncDrop.addEventListener('drop', function(e){ e.preventDefault(); ncDrop.classList.remove('drag-over'); addPending(e.dataTransfer.files); });
+
   document.getElementById('ncCreate').addEventListener('click', function(){
     var pid=val('ncProj');
     if(!pid){ toast('Select a project first','err'); return; }
@@ -1708,11 +1773,12 @@ function newClaimFlow(presetPid){
     var claim=put('claims', {
       id:uid(), projectId:pid, claimNo:nextClaimNo(pid), date:val('ncDate')||todayISO(),
       periodTo:val('ncPeriod')||todayISO(), previousPaid:Number(val('ncPrev'))||0,
-      status:val('ncStatus')||'draft', notes:val('ncNotes').trim(), lines:lines,
+      notes:val('ncNotes').trim(), lines:lines,
       createdAt:Date.now(), createdBy: currentUser? (currentUser.name||currentUser.email||'') : ''
     });
     closeModal(); toast('Claim #'+claim.claimNo+' created','ok');
-    openClaim(claim.id);
+    if(pendingPhotos.length){ addClaimPhotos(pendingPhotos, pid, claim.id, function(){ openClaim(claim.id); }); }
+    else openClaim(claim.id);
   });
 }
 
@@ -1721,9 +1787,10 @@ function openClaim(id){
   var c=state.claims[id]; if(!c) return;
   var p=state.projects[c.projectId]||{};
   var lines=claimLines(c), t=claimTotals(c);
+  var phs=claimPhotos(c.id);
   openModal(
     '<div class="modal-head"><div><h2>Progress Claim #'+(c.claimNo||'')+'</h2>'+
-      '<div class="sub">'+esc(p.name||'')+' • '+fmtDate(c.date)+' • '+esc(c.status||'draft')+'</div></div>'+
+      '<div class="sub">'+esc(p.name||'')+' • '+fmtDate(c.date)+'</div></div>'+
       '<button class="modal-close" data-close>&times;</button></div>'+
     '<div class="mini-toolbar"><div style="font-size:12px;color:#7a8bb0">Work done up to '+fmtDate(c.periodTo)+'</div>'+
       '<div style="display:flex;gap:8px;flex-wrap:wrap">'+
@@ -1733,15 +1800,31 @@ function openClaim(id){
         '<button class="btn btn-danger btn-sm edit-only" id="clDel">Delete</button>'+
       '</div></div>'+
     '<div style="max-height:50vh;overflow:auto">'+claimTableHTML(lines,t,false)+'</div>'+
-    (c.notes?'<div class="panel" style="margin-top:12px"><h3>Notes</h3><div style="font-size:13px;white-space:pre-wrap;color:#ccd3e0">'+esc(c.notes)+'</div></div>':''), true
+    (c.notes?'<div class="panel" style="margin-top:12px"><h3>Notes</h3><div style="font-size:13px;white-space:pre-wrap;color:#ccd3e0">'+esc(c.notes)+'</div></div>':'')+
+    '<div class="panel" style="margin-top:12px"><h3>Progress Photos</h3>'+
+      (canOperate(p)?'<div class="dropzone" id="clPhotoDrop">Drop photos here or <b>click to add</b>'+
+        '<input type="file" id="clPhotoInput" accept="image/*" multiple capture="environment" style="display:none"></div>':'')+
+      (phs.length?'<div class="photo-grid">'+phs.map(function(x){return photoCardHTML(x,false,false);}).join('')+'</div>'
+                :'<div class="empty-state" style="padding:16px 0">No progress photos attached.</div>')+
+    '</div>', true
   );
   bindClose();
+  wirePhotoCards(modalBox, function(){ openClaim(id); });
   document.getElementById('clPdf').addEventListener('click', function(){ exportClaimPDF(c); });
   document.getElementById('clXls').addEventListener('click', function(){ exportClaimExcel(c); });
   var e=document.getElementById('clEdit'); if(e) e.addEventListener('click', function(){ editClaim(c); });
   var d=document.getElementById('clDel'); if(d) d.addEventListener('click', function(){
     if(confirm('Delete Claim #'+c.claimNo+'? This does not change item progress.')){ remove('claims', c.id); closeModal(); toast('Claim deleted'); renderCurrent(); }
   });
+  var cpd=document.getElementById('clPhotoDrop');
+  if(cpd){
+    var cpi=document.getElementById('clPhotoInput');
+    cpd.addEventListener('click', function(){ cpi.click(); });
+    cpi.addEventListener('change', function(){ addClaimPhotos(cpi.files, c.projectId, c.id, function(){ openClaim(id); }); });
+    ['dragover','dragenter'].forEach(function(ev){ cpd.addEventListener(ev,function(e){ e.preventDefault(); cpd.classList.add('drag-over'); }); });
+    ['dragleave','dragend'].forEach(function(ev){ cpd.addEventListener(ev,function(){ cpd.classList.remove('drag-over'); }); });
+    cpd.addEventListener('drop', function(e){ e.preventDefault(); cpd.classList.remove('drag-over'); addClaimPhotos(e.dataTransfer.files, c.projectId, c.id, function(){ openClaim(id); }); });
+  }
 }
 function claimTableHTML(lines, t, forPrint){
   var cls=forPrint?'':'item-table';
@@ -1771,8 +1854,6 @@ function editClaim(c){
       field('Claim Date','ecDate',c.date,'date')+
       field('Work Done Up To','ecPeriod',c.periodTo,'date')+
       field('Less: Previous Payments (RM)','ecPrev',c.previousPaid,'number')+
-      '<div class="field"><label>Status</label><select id="ecStatus">'+
-        ['draft','submitted','certified'].map(function(s){return '<option value="'+s+'"'+(c.status===s?' selected':'')+'>'+s+'</option>';}).join('')+'</select></div>'+
       '<div class="field full"><label>Notes</label><textarea id="ecNotes">'+esc(c.notes||'')+'</textarea></div>'+
     '</div>'+
     '<div class="extract-note">Re-snapshot updates this claim to each item\'s <b>current</b> % — use it if progress changed since you created the claim.</div>'+
@@ -1789,7 +1870,7 @@ function editClaim(c){
   document.getElementById('ecSave').addEventListener('click', function(){
     put('claims', Object.assign({}, c, {
       date:val('ecDate'), periodTo:val('ecPeriod'), previousPaid:Number(val('ecPrev'))||0,
-      status:val('ecStatus'), notes:val('ecNotes').trim()
+      notes:val('ecNotes').trim()
     }));
     toast('Claim saved','ok'); openClaim(c.id);
   });
@@ -1798,7 +1879,7 @@ function editClaim(c){
 /* ---- exports ---- */
 function claimDocHTML(c){
   var p=state.projects[c.projectId]||{};
-  var lines=claimLines(c), t=claimTotals(c);
+  var lines=claimLines(c), t=claimTotals(c), phs=claimPhotos(c.id);
   var logo=document.querySelector('.sidebar .logo-img');
   return '<div class="claim-doc">'+
     '<div class="cd-head">'+
@@ -1810,9 +1891,13 @@ function claimDocHTML(c){
     '<table class="cd-meta"><tr><td><b>Project</b></td><td>'+esc(p.name||'')+'</td>'+
       '<td><b>Claim Date</b></td><td>'+fmtDate(c.date)+'</td></tr>'+
       '<tr><td><b>Client</b></td><td>'+esc(p.client||'-')+'</td><td><b>Work Done Up To</b></td><td>'+fmtDate(c.periodTo)+'</td></tr>'+
-      '<tr><td><b>Site</b></td><td>'+esc(p.site||'-')+'</td><td><b>Status</b></td><td>'+esc(c.status||'draft')+'</td></tr></table>'+
+      '<tr><td><b>Site</b></td><td colspan="3">'+esc(p.site||'-')+'</td></tr></table>'+
     claimTableHTML(lines,t,true)+
     (c.notes?'<div class="cd-notes"><b>Notes:</b><br>'+esc(c.notes).replace(/\n/g,'<br>')+'</div>':'')+
+    (phs.length?'<div class="cd-photos"><h3>Progress Photos</h3><div class="cd-photo-grid">'+
+      phs.map(function(ph){ return '<div class="cd-photo-item"><img src="'+(ph.url||ph.dataUrl||'')+'">'+
+        (ph.caption?'<div class="cap">'+esc(ph.caption)+'</div>':'')+'</div>'; }).join('')+
+    '</div></div>':'')+
     '<table class="cd-sign"><tr>'+
       '<td><div class="cd-line"></div>Prepared by<br><span class="cd-sub">'+esc(c.createdBy||'')+'</span></td>'+
       '<td><div class="cd-line"></div>Checked by</td>'+
@@ -1834,8 +1919,18 @@ var CLAIM_PRINT_CSS =
  'th,td{border:1px solid #666;padding:4px 5px;vertical-align:top}'+
  'th{background:#e6e9f0;font-weight:bold;text-align:left}'+
  '.amt,.num-col{text-align:right;white-space:nowrap}'+
+ /* browsers repeat <tfoot> on every printed page by default (it's a UA-stylesheet
+    table-footer-group) — force it back to a normal row group so the totals
+    print once, after the last item row, on the last page only */
+ 'tfoot{display:table-row-group}'+
  'tfoot td{background:#f2f4f8}'+
  '.cd-notes{margin-top:10px;font-size:10px;border:1px solid #999;padding:6px}'+
+ '.cd-photos{margin-top:14px}'+
+ '.cd-photos h3{font-size:11px;margin:0 0 6px}'+
+ '.cd-photo-grid{display:flex;flex-wrap:wrap;gap:8px}'+
+ '.cd-photo-item{width:130px}'+
+ '.cd-photo-item img{width:130px;height:98px;object-fit:cover;border:1px solid #999;display:block}'+
+ '.cd-photo-item .cap{font-size:8px;color:#333;margin-top:2px;word-break:break-word}'+
  '.cd-sign{width:100%;margin-top:34px;border-collapse:collapse}'+
  '.cd-sign td{border:none;width:33%;font-size:10px;padding-right:18px;vertical-align:top}'+
  '.cd-line{border-bottom:1px solid #000;height:30px;margin-bottom:4px}'+
@@ -1931,7 +2026,6 @@ function exportClaimExcel(c){
   meta('Site', p.site||'-');
   meta('Claim Date', fmtDate(c.date));
   meta('Work Done Up To', fmtDate(c.periodTo));
-  meta('Status', (c.status||'draft').toUpperCase());
   if(c.createdBy) meta('Prepared By', c.createdBy);
   rows.push('<Row/>');
 
@@ -2021,10 +2115,10 @@ document.addEventListener('keydown', function(e){ if(e.key==='Escape') lightbox.
 
 function itemDesc(id){ var it=state.items[id]; return it? (it.description||'') : ''; }
 
-function uploadPhoto(file, pid, itemId, caption, folderId){
+function uploadPhoto(file, pid, itemId, caption, folderId, claimId){
   return new Promise(function(resolve, reject){
     if(!/^image\//.test(file.type)){ toast('Only image files can be added as photos','err'); reject(new Error('not image')); return; }
-    var meta={ projectId:pid, itemId:itemId||'', caption:caption||'', folderId:folderId||'', uploadedAt:new Date().toISOString(),
+    var meta={ projectId:pid, itemId:itemId||'', caption:caption||'', folderId:folderId||'', claimId:claimId||'', uploadedAt:new Date().toISOString(),
                uploadedBy: currentUser? (currentUser.name||currentUser.email||'') : '' };
     if(FB_ENABLED && storage){
       var path='pm/projects/'+pid+'/photos/'+Date.now()+'_'+file.name;
@@ -2115,6 +2209,13 @@ function addPhotos(files, pid, itemId, after){
   (function next(i){
     if(i>=list.length){ if(after) after(); return; }
     uploadPhoto(list[i], pid, itemId, '', '').then(function(){ next(i+1); }).catch(function(){ next(i+1); });
+  })(0);
+}
+function addClaimPhotos(files, pid, claimId, after){
+  var list=Array.prototype.slice.call(files);
+  (function next(i){
+    if(i>=list.length){ if(after) after(); return; }
+    uploadPhoto(list[i], pid, '', '', '', claimId).then(function(){ next(i+1); }).catch(function(){ next(i+1); });
   })(0);
 }
 
@@ -2213,6 +2314,24 @@ function renderUsers(){
     var name=prompt('Name of the salesman to add (no login needed):'); name=(name||'').trim(); if(!name) return;
     put('roster', {id:uid(), name:name, createdAt:Date.now()}); toast('Added '+name,'ok'); renderUsers();
   });
+
+  el.innerHTML += '<div class="panel"><h3>Data Backup</h3>'+
+    '<div style="font-size:12px;color:#7a8bb0;margin-bottom:12px">A full copy of every project, item, document, photo, claim, payment and folder record downloads as one JSON file — nothing is uploaded anywhere. '+
+      'The cloud also takes its own automatic snapshot every night, independent of this app, in case of a bug here.</div>'+
+    '<button class="btn btn-secondary btn-sm" id="backupNowBtn">⭳ Backup Now (download JSON)</button>'+
+  '</div>';
+  var bnb=document.getElementById('backupNowBtn'); if(bnb) bnb.addEventListener('click', backupAllData);
+}
+function backupAllData(){
+  var payload={ _exportedAt:new Date().toISOString(), _exportedBy: currentUser? (currentUser.name||currentUser.email||'') : '' };
+  COLS.forEach(function(c){ payload[c]=state[c]; });
+  var blob=new Blob([JSON.stringify(payload,null,2)], {type:'application/json'});
+  var url=URL.createObjectURL(blob);
+  var a=document.createElement('a');
+  a.href=url; a.download='iht-pm-backup-'+todayISO()+'.json';
+  document.body.appendChild(a); a.click(); document.body.removeChild(a);
+  setTimeout(function(){ URL.revokeObjectURL(url); }, 4000);
+  toast('Backup downloaded','ok');
 }
 
 /* =====================================================================
