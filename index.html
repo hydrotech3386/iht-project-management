@@ -381,9 +381,9 @@ if (FB_ENABLED) {
 /* Every user must sign in and be given a role by an admin. There is no
    anonymous or public read-only mode. */
 var LS_KEY = 'iht_pm_v2';
-var COLS = ['projects','items','documents','photos','claims','folders','users'];
+var COLS = ['projects','items','documents','photos','claims','folders','users','roster'];
 
-var state = { projects:{}, items:{}, documents:{}, photos:{}, claims:{}, folders:{}, users:{} };
+var state = { projects:{}, items:{}, documents:{}, photos:{}, claims:{}, folders:{}, users:{}, roster:{} };
 var currentUser = null;
 var db = null, storage = null, auth = null, functions = null;
 
@@ -478,6 +478,11 @@ function roleLabel(r){ var f=ROLES.filter(function(x){return x[0]===r;})[0]; ret
 function rolesLabel(roles){ roles=roles||[]; return roles.length? roles.map(roleLabel).join(', ') : 'No access'; }
 function userLabel(u){ return (u && (u.name || (u.email||'').split('@')[0])) || '—'; }
 function salesmen(){ return Object.values(state.users).filter(function(u){ return normalizeRoles(u).indexOf('salesman')>=0; }); }
+/* "Named" salesmen: people a project can be attributed to for reporting
+   purposes without them having (or needing) a login. Kept as a small,
+   admin-managed roster separate from real accounts — assigning one never
+   grants any access, since nothing ever signs in with that id. */
+function rosterList(){ return Object.values(state.roster).sort(function(a,b){ return (a.name||'').localeCompare(b.name||''); }); }
 
 var toastEl = document.getElementById('toast'), toastTimer;
 function toast(msg, kind, sticky){
@@ -736,7 +741,9 @@ function openProjectForm(p){
       field('End Date','pfEnd',p.endDate,'date')+
       (isAdmin()? '<div class="field"><label>Salesman</label><select id="pfSalesman">'+
         '<option value="">— unassigned —</option>'+
-        salesmen().map(function(u){ return '<option value="'+u.id+'"'+(p.salesmanId===u.id?' selected':'')+'>'+esc(userLabel(u))+'</option>'; }).join('')+
+        (salesmen().length?'<optgroup label="Team">'+salesmen().map(function(u){ return '<option value="'+u.id+'"'+(p.salesmanId===u.id?' selected':'')+'>'+esc(userLabel(u))+'</option>'; }).join('')+'</optgroup>':'')+
+        (rosterList().length?'<optgroup label="Named (no login)">'+rosterList().map(function(r){ return '<option value="'+r.id+'"'+(p.salesmanId===r.id?' selected':'')+'>'+esc(r.name)+'</option>'; }).join('')+'</optgroup>':'')+
+        '<option value="__new__">+ Add named salesman…</option>'+
         '</select></div>' : '')+
       selField('Progress Mode','pfMode',[['auto','Auto (weighted from items)'],['manual','Manual %']],p.progressMode||'auto')+
       '<div class="field" id="manualProgWrap" style="'+((p.progressMode==='manual')?'':'display:none')+'">'+
@@ -753,6 +760,20 @@ function openProjectForm(p){
   var modeSel=document.getElementById('pfMode'), wrap=document.getElementById('manualProgWrap');
   modeSel.addEventListener('change', function(){ wrap.style.display=this.value==='manual'?'block':'none'; });
   var rng=document.getElementById('pfProgress'); if(rng) rng.addEventListener('input', function(){ document.getElementById('pfProgVal').textContent=this.value+'%'; });
+  var smSel=document.getElementById('pfSalesman');
+  if(smSel) smSel.addEventListener('change', function(){
+    if(this.value!=='__new__') return;
+    var name=prompt('Name of the salesman to add (no login needed):');
+    this.value = p.salesmanId||'';   // reset the sentinel selection regardless of outcome
+    name=(name||'').trim(); if(!name) return;
+    var entry=put('roster', {id:uid(), name:name, createdAt:Date.now()});
+    var grp=this.querySelector('optgroup[label="Named (no login)"]');
+    if(!grp){ grp=document.createElement('optgroup'); grp.label='Named (no login)'; this.insertBefore(grp, this.lastElementChild); }
+    var opt=document.createElement('option'); opt.value=entry.id; opt.textContent=entry.name;
+    grp.appendChild(opt);
+    this.value=entry.id;
+    toast('Added '+entry.name,'ok');
+  });
   if(isNew){
     var drop=document.getElementById('pfDocDrop'), inp=document.getElementById('pfDocInput'), hint=document.getElementById('pfDocHint');
     var pick=function(file){
@@ -793,11 +814,13 @@ function openProjectForm(p){
     var projectType=val('pfType'); if(!projectType){ toast('Select a project type','err'); return; }
     // salesman assignment is admin-only; non-admins keep whatever was already set
     var salesmanId = isAdmin() ? val('pfSalesman') : (p.salesmanId||'');
+    if(salesmanId==='__new__') salesmanId='';   // sentinel never a real selection at save time
     var smUser = salesmanId ? state.users[salesmanId] : null;
+    var smRoster = (!smUser && salesmanId) ? state.roster[salesmanId] : null;
     var obj=Object.assign({}, p, {
       id:pendingId, name:name, projectType:projectType, status:val('pfStatus'), client:val('pfClient').trim(), site:val('pfSite').trim(),
       startDate:val('pfStart'), endDate:val('pfEnd'), progressMode:val('pfMode'),
-      salesmanId:salesmanId, salesmanName: smUser? userLabel(smUser) : (salesmanId? (p.salesmanName||'') : ''),
+      salesmanId:salesmanId, salesmanName: smUser? userLabel(smUser) : (smRoster? smRoster.name : (salesmanId? (p.salesmanName||'') : '')),
       progress:Number((document.getElementById('pfProgress')||{}).value||p.progress||0), notes:val('pfNotes').trim(),
       createdAt:p.createdAt||Date.now()
     });
@@ -2162,6 +2185,34 @@ function renderUsers(){
     put('users', Object.assign({}, u, {name:inp.value.trim()})); toast('Name updated','ok');
     if(currentUser && u.id===currentUser.uid){ currentUser.name=inp.value.trim(); paintUserInfo(); }
   }); });
+
+  var roster=rosterList();
+  el.innerHTML += '<div class="panel"><h3>Named Salesmen (no login)</h3>'+
+    '<div style="font-size:12px;color:#7a8bb0;margin-bottom:12px">People a project can be assigned to for reporting, without an account — they never sign in and this grants no access. Used when a real Team member above hasn\'t (or won\'t) sign up.</div>'+
+    (roster.length? '<table class="item-table"><thead><tr><th>Name</th><th style="width:60px"></th></tr></thead><tbody>'+
+      roster.map(function(r){
+        return '<tr><td><input type="text" class="name-input" value="'+esc(r.name)+'" data-roster-name="'+r.id+'"></td>'+
+          '<td><button class="btn btn-danger btn-sm" data-roster-del="'+r.id+'">×</button></td></tr>';
+      }).join('')+'</tbody></table>' : '')+
+    '<button class="btn btn-add btn-sm" id="rosterAddBtn" style="margin-top:10px">+ Add Named Salesman</button>'+
+  '</div>';
+  el.querySelectorAll('[data-roster-name]').forEach(function(inp){ inp.addEventListener('change', function(){
+    var r=state.roster[inp.dataset.rosterName]; if(!r) return;
+    var n=inp.value.trim(); if(!n){ toast('Name cannot be empty','err'); inp.value=r.name; return; }
+    put('roster', Object.assign({}, r, {name:n})); toast('Name updated','ok');
+  }); });
+  el.querySelectorAll('[data-roster-del]').forEach(function(b){ b.addEventListener('click', function(){
+    var r=state.roster[b.dataset.rosterDel]; if(!r) return;
+    var used=Object.values(state.projects).filter(function(p){ return p.salesmanId===r.id; });
+    var msg='Remove "'+r.name+'"?'+(used.length?' '+used.length+' project(s) currently assigned to them will show as unassigned.':'');
+    if(!confirm(msg)) return;
+    used.forEach(function(p){ put('projects', Object.assign({}, p, {salesmanId:'', salesmanName:''})); });
+    remove('roster', r.id); toast('Removed'); renderUsers();
+  }); });
+  var radd=document.getElementById('rosterAddBtn'); if(radd) radd.addEventListener('click', function(){
+    var name=prompt('Name of the salesman to add (no login needed):'); name=(name||'').trim(); if(!name) return;
+    put('roster', {id:uid(), name:name, createdAt:Date.now()}); toast('Added '+name,'ok'); renderUsers();
+  });
 }
 
 /* =====================================================================
