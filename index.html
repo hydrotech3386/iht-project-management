@@ -1634,6 +1634,7 @@ function newClaimFlow(presetPid){
       field('Claim Date','ncDate',todayISO(),'date')+
       field('Work Done Up To','ncPeriod',todayISO(),'date')+
       field('Less: Previous Payments (RM)','ncPrev','','number')+
+      '<div class="field" style="align-self:flex-end"><button type="button" class="btn btn-secondary btn-sm" id="ncUsePaid" style="display:none"></button></div>'+
       '<div class="field full"><label>Notes</label><textarea id="ncNotes" placeholder="Optional remarks shown on the claim"></textarea></div>'+
       '<div class="field full"><label>Progress Photos (optional)</label>'+
         '<div class="dropzone" id="ncPhotoDrop">Drop photos here or <b>click to add</b>'+
@@ -1725,17 +1726,29 @@ function newClaimFlow(presetPid){
     if(btn){ btn.disabled=false; btn.style.opacity=1; btn.style.cursor='pointer'; }
     var cs=projectClaims(pid); var last=cs[cs.length-1];
     var lastTotal=last? claimTotals(last).toDate : 0;
+    var paidTotal=projectPayments(pid).reduce(function(s,x){ return s+(Number(x.amount)||0); }, 0);
     var np=projectItems(pid).length;
     document.getElementById('ncHint').innerHTML =
       'This will be <b>Claim #'+nextClaimNo(pid)+'</b> for <b>'+esc(projName(pid))+'</b> ('+np+' items). '+
       (last? 'Previous claim #'+last.claimNo+' was '+fmtRM(lastTotal)+' to date — defaulting “previous payments” to that.'
-           : 'No earlier claims, so previous payments default to RM 0.');
+           : 'No earlier claims, so previous payments default to RM 0.')+
+      (paidTotal? ' Total payments received on record for this project: <b>'+fmtRM(paidTotal)+'</b>.' : '');
     var prevEl=document.getElementById('ncPrev');
     if(prevEl && !prevEl.dataset.touched) prevEl.value = lastTotal? lastTotal : '';
+    var upBtn=document.getElementById('ncUsePaid');
+    if(upBtn){
+      upBtn.style.display = paidTotal? '' : 'none';
+      upBtn.textContent = 'Use Payments Received ('+fmtRM(paidTotal)+')';
+      upBtn.dataset.amount = paidTotal;
+    }
     existingExpanded=false; selectedExisting=[]; renderPending(); renderExistingSection();
   }
   sel.addEventListener('change', refreshHint);
   document.getElementById('ncPrev').addEventListener('input', function(){ this.dataset.touched='1'; });
+  document.getElementById('ncUsePaid').addEventListener('click', function(){
+    var prevEl=document.getElementById('ncPrev');
+    prevEl.value=this.dataset.amount||0; prevEl.dataset.touched='1';
+  });
   refreshHint();
 
   document.getElementById('ncCreate').addEventListener('click', function(){
@@ -1832,12 +1845,16 @@ function claimTableHTML(lines, t, forPrint){
     '</tfoot></table>';
 }
 function editClaim(c){
+  var paidTotal=projectPayments(c.projectId).reduce(function(s,x){ return s+(Number(x.amount)||0); }, 0);
   openModal(
     '<div class="modal-head"><h2>Edit Claim #'+(c.claimNo||'')+'</h2><button class="modal-close" data-close>&times;</button></div>'+
     '<div class="form-grid">'+
       field('Claim Date','ecDate',c.date,'date')+
       field('Work Done Up To','ecPeriod',c.periodTo,'date')+
       field('Less: Previous Payments (RM)','ecPrev',c.previousPaid,'number')+
+      '<div class="field" style="align-self:flex-end">'+
+        (paidTotal?'<button type="button" class="btn btn-secondary btn-sm" id="ecUsePaid">Use Payments Received ('+fmtRM(paidTotal)+')</button>':'')+
+      '</div>'+
       '<div class="field full"><label>Notes</label><textarea id="ecNotes">'+esc(c.notes||'')+'</textarea></div>'+
     '</div>'+
     '<div class="extract-note">Re-snapshot updates this claim to each item\'s <b>current</b> % — use it if progress changed since you created the claim.</div>'+
@@ -1846,6 +1863,7 @@ function editClaim(c){
       '<button class="btn btn-primary" id="ecSave">Save</button></div>'
   );
   bindClose();
+  var euBtn=document.getElementById('ecUsePaid'); if(euBtn) euBtn.addEventListener('click', function(){ document.getElementById('ecPrev').value=paidTotal; });
   document.getElementById('ecResnap').addEventListener('click', function(){
     if(!confirm('Update this claim to the current % of every item?')) return;
     var lines={}; projectItems(c.projectId).forEach(function(it){ lines[it.id]=Number(it.percent)||0; });
