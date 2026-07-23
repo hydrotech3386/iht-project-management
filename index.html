@@ -725,28 +725,35 @@ function renderProjectGrid(){
   if(!list.length){ grid.innerHTML='<div class="empty-state">'+
     ((isSalesman()||isLapCoordinator())?'No projects have been assigned to you yet.'
                  :'No projects yet. Click “+ New Project” to add one.')+'</div>'; return; }
-  grid.innerHTML=list.map(function(p){
-    var prog=projectProgress(p); var its=projectItems(p.id);
-    var done=its.filter(function(t){ return (Number(t.percent)||0)>=100; }).length;
-    var cv=contractValue(p.id);
-    var docCount=projectDocs(p.id).filter(function(d){ return canSeeSourceDocs() || !d.source; }).length;
-    return '<div class="project-card" data-id="'+p.id+'">'+
-      '<div class="pc-top"><div><div class="pc-name">'+esc(p.name)+'</div>'+
-        (p.client||p.site?'<div class="pc-site">'+esc([p.client,p.site].filter(Boolean).join(' • '))+'</div>':'')+
-      '</div><div style="display:flex;flex-direction:column;gap:4px;align-items:flex-end">'+
-        (p.projectType?'<span class="type-badge">'+esc(p.projectType)+'</span>':'')+
-        '<span class="status-badge '+statusClass(p.status)+'">'+statusLabel(p.status)+'</span></div></div>'+
-      (p.startDate||p.endDate?'<div class="pc-dates">'+fmtDate(p.startDate)+' → '+fmtDate(p.endDate)+'</div>':'')+
-      '<div class="pc-progress-bar"><div class="pc-progress-fill" style="width:'+prog+'%"></div></div>'+
-      '<div class="pc-progress-label"><span>'+prog+'% complete</span><span>'+done+'/'+its.length+' items</span></div>'+
-      '<div class="pc-meta">'+
-        (its.length?'<span class="chip">☑ '+its.length+' items</span>':'<span class="chip">no items yet</span>')+
-        (cv&&canSeePrice(p)?'<span class="chip">'+fmtRM(cv)+'</span>':'')+
-        (docCount?'<span class="chip">▤ '+docCount+'</span>':'')+
-        (!isSalesman()&&p.salesmanName?'<span class="chip">👤 '+esc(p.salesmanName)+'</span>':'')+
-      '</div></div>';
-  }).join('');
-  grid.querySelectorAll('.project-card').forEach(function(c){ c.addEventListener('click', function(){ openProjectDetail(c.dataset.id); }); });
+  grid.innerHTML=list.map(projectCardHTML).join('');
+  wireProjectCards(grid, 'overview');
+}
+/* the same project card is reused as a picker on the Items/Claims/Documents
+   pages — pick a project there first, then "go inside" (the project detail
+   modal, on whichever tab that page cares about) to actually work with it */
+function projectCardHTML(p){
+  var prog=projectProgress(p); var its=projectItems(p.id);
+  var done=its.filter(function(t){ return (Number(t.percent)||0)>=100; }).length;
+  var cv=contractValue(p.id);
+  var docCount=projectDocs(p.id).filter(function(d){ return canSeeSourceDocs() || !d.source; }).length;
+  return '<div class="project-card" data-id="'+p.id+'">'+
+    '<div class="pc-top"><div><div class="pc-name">'+esc(p.name)+'</div>'+
+      (p.client||p.site?'<div class="pc-site">'+esc([p.client,p.site].filter(Boolean).join(' • '))+'</div>':'')+
+    '</div><div style="display:flex;flex-direction:column;gap:4px;align-items:flex-end">'+
+      (p.projectType?'<span class="type-badge">'+esc(p.projectType)+'</span>':'')+
+      '<span class="status-badge '+statusClass(p.status)+'">'+statusLabel(p.status)+'</span></div></div>'+
+    (p.startDate||p.endDate?'<div class="pc-dates">'+fmtDate(p.startDate)+' → '+fmtDate(p.endDate)+'</div>':'')+
+    '<div class="pc-progress-bar"><div class="pc-progress-fill" style="width:'+prog+'%"></div></div>'+
+    '<div class="pc-progress-label"><span>'+prog+'% complete</span><span>'+done+'/'+its.length+' items</span></div>'+
+    '<div class="pc-meta">'+
+      (its.length?'<span class="chip">☑ '+its.length+' items</span>':'<span class="chip">no items yet</span>')+
+      (cv&&canSeePrice(p)?'<span class="chip">'+fmtRM(cv)+'</span>':'')+
+      (docCount?'<span class="chip">▤ '+docCount+'</span>':'')+
+      (!isSalesman()&&p.salesmanName?'<span class="chip">👤 '+esc(p.salesmanName)+'</span>':'')+
+    '</div></div>';
+}
+function wireProjectCards(container, tab){
+  container.querySelectorAll('.project-card').forEach(function(c){ c.addEventListener('click', function(){ openProjectDetail(c.dataset.id, tab); }); });
 }
 
 function openProjectForm(p){
@@ -889,7 +896,9 @@ function setFolder(kind, id){ if(kind==='photo') photoFolderId=id; else docFolde
 function openProjectDetail(id, tab){
   var p=state.projects[id]; if(!p) return;
   if(!canSeeProject(p)){ toast('That project is not assigned to you','err'); return; }
-  detailProjId=id; detailTab=tab||'overview'; docFolderId=''; photoFolderId=''; detailItemsSectionFilter=''; renderProjectDetail();
+  detailProjId=id; detailTab=tab||'overview'; docFolderId=''; photoFolderId='';
+  detailItemsSectionFilter=''; detailItemsSearch=''; detailItemsHideDone=false;
+  renderProjectDetail();
 }
 function curProj(){ return state.projects[detailProjId]; }
 function renderProjectDetail(){
@@ -909,7 +918,7 @@ function renderProjectDetail(){
 function renderDetailBody(){
   var p=curProj(); var body=document.getElementById('detailBody');
   if(detailTab==='overview') body.innerHTML=detailOverview(p);
-  else if(detailTab==='items') body.innerHTML=detailItems(p);
+  else if(detailTab==='items'){ body.innerHTML=detailItems(p); renderDetailItemsWrap(p); }
   else if(detailTab==='photos'){ body.innerHTML=detailPhotos(p); wireProjectPhotoUpload(p); wireFolderChrome(p); }
   else if(detailTab==='claims') body.innerHTML=detailClaims(p);
   else if(detailTab==='documents'){ body.innerHTML=detailDocuments(p); wireDocUpload(p.id); wireFolderChrome(p); }
@@ -938,19 +947,35 @@ function detailOverview(p){
       }).join('') : '<div class="empty-state" style="padding:16px 0">No milestones</div>')+
     '</div>';
 }
-var detailItemsSectionFilter='';
+var detailItemsSectionFilter='', detailItemsSearch='', detailItemsHideDone=false;
+/* the search box and hide-completed checkbox live in this static shell, which
+   is only rendered once per tab-entry; the actual list lives in a nested
+   #detailItemsWrap that renderDetailItemsWrap() alone rebuilds on every
+   filter change, so typing a search term never blows away the input's own
+   focus/cursor the way rebuilding this whole shell on every keystroke would */
 function detailItems(p){
   var allIts=projectItems(p.id);
-  var its = detailItemsSectionFilter ? allIts.filter(function(it){ return (it.section||'')===detailItemsSectionFilter; }) : allIts;
   var cv=contractValue(p.id); var money=canSeePrice(p);
-  var srcDoc=canSeeSourceDocs()? projectDocs(p.id).filter(function(d){ return d.source; })[0] : null;
   return '<div class="mini-toolbar"><div style="font-size:12px;color:#7a8bb0">'+allIts.length+' items'+(cv&&money?' • '+fmtRM(cv)+' total':'')+'</div>'+
       (canEdit(p)?'<div style="display:flex;gap:8px;flex-wrap:wrap">'+
         '<button class="btn btn-ai btn-sm" data-extract>✨ Extract items with AI</button>'+
         '<button class="btn btn-secondary btn-sm" data-paste>Paste items</button>'+
         '<button class="btn btn-add btn-sm" data-add-item>+ Item</button>'+
       '</div>':'')+'</div>'+
-    sectionLegendHTML(allIts, detailItemsSectionFilter)+
+    (allIts.length?'<div class="toolbar"><input type="search" id="diSearch" placeholder="Search items…" value="'+esc(detailItemsSearch)+'">'+
+      '<label><input type="checkbox" id="diHideDone"'+(detailItemsHideDone?' checked':'')+'> Hide completed</label></div>':'')+
+    '<div id="detailItemsWrap"></div>';
+}
+function renderDetailItemsWrap(p){
+  var wrap=document.getElementById('detailItemsWrap'); if(!wrap) return;
+  var allIts=projectItems(p.id);
+  var its=allIts;
+  if(detailItemsSectionFilter) its=its.filter(function(it){ return (it.section||'')===detailItemsSectionFilter; });
+  if(detailItemsHideDone) its=its.filter(function(it){ return (Number(it.percent)||0)<100; });
+  if(detailItemsSearch) its=its.filter(function(it){ return ((it.description||'')+' '+(it.section||'')).toLowerCase().includes(detailItemsSearch); });
+  var money=canSeePrice(p);
+  var srcDoc=canSeeSourceDocs()? projectDocs(p.id).filter(function(d){ return d.source; })[0] : null;
+  wrap.innerHTML = sectionLegendHTML(allIts, detailItemsSectionFilter)+
     (its.length?
       '<table class="item-table"><thead><tr><th style="width:52px">No.</th><th>Description</th><th class="num-col">Qty</th><th>Unit</th>'+
         (money?'<th class="amt">Value</th>':'')+
@@ -969,8 +994,21 @@ function detailItems(p){
           (canEdit(p)?'<td><button class="btn btn-secondary btn-sm" data-edit-item="'+it.id+'">✎</button></td>':'')+
         '</tr>';
       }).join('')+'</tbody></table>'
-    : (allIts.length? '<div class="empty-state" style="padding:24px 0">No items in this section.</div>'
+    : (allIts.length? '<div class="empty-state" style="padding:24px 0">No items match.</div>'
       :'<div class="empty-state" style="padding:24px 0">No items yet.<br>'+(srcDoc?'Click <b>Extract items with AI</b> to read them from '+esc(srcDoc.name)+'.':'Upload a PO/BQ in Documents then extract, or add items manually.')+'</div>'));
+  wrap.querySelectorAll('[data-item-photos]').forEach(function(b){ b.addEventListener('click', function(e){ e.stopPropagation(); openItemPhotos(b.dataset.itemPhotos); }); });
+  wrap.querySelectorAll('[data-sec-filter]').forEach(function(c){ c.addEventListener('click', function(){
+    detailItemsSectionFilter = detailItemsSectionFilter===c.dataset.secFilter ? '' : c.dataset.secFilter;
+    renderDetailItemsWrap(p);
+  }); });
+  wrap.querySelectorAll('[data-edit-item]').forEach(function(b){ b.addEventListener('click', function(){ openItemForm(state.items[b.dataset.editItem]); }); });
+  wrap.querySelectorAll('[data-pct]').forEach(function(inp){
+    inp.addEventListener('change', function(){
+      var it=state.items[inp.dataset.pct]; if(!it||!canOperate(p)) return;
+      var v=Math.max(0,Math.min(100, Math.round(Number(inp.value)||0)));
+      put('items', Object.assign({}, it, {percent:v})); renderDetailItemsWrap(p); renderCurrent();
+    });
+  });
 }
 /* ---------- shared folder chrome (used by both Documents and Photos) ---------- */
 function folderCrumb(p, kind){
@@ -1043,18 +1081,8 @@ function wireDetailActions(p){
   });
   var ps=modalBox.querySelector('[data-paste]'); if(ps) ps.addEventListener('click', function(){ openPasteItems(curProj()); });
   var ai2=modalBox.querySelector('[data-add-item]'); if(ai2) ai2.addEventListener('click', function(){ openItemForm({projectId:p.id}); });
-  modalBox.querySelectorAll('[data-edit-item]').forEach(function(b){ b.addEventListener('click', function(){ openItemForm(state.items[b.dataset.editItem]); }); });
-  modalBox.querySelectorAll('[data-sec-filter]').forEach(function(c){ c.addEventListener('click', function(){
-    detailItemsSectionFilter = detailItemsSectionFilter===c.dataset.secFilter ? '' : c.dataset.secFilter;
-    renderProjectDetail();
-  }); });
-  modalBox.querySelectorAll('[data-pct]').forEach(function(inp){
-    inp.addEventListener('change', function(){
-      var it=state.items[inp.dataset.pct]; if(!it||!canOperate(p)) return;
-      var v=Math.max(0,Math.min(100, Math.round(Number(inp.value)||0)));
-      put('items', Object.assign({}, it, {percent:v})); renderProjectDetail();
-    });
-  });
+  var diS=modalBox.querySelector('#diSearch'); if(diS) diS.addEventListener('input', function(){ detailItemsSearch=this.value.toLowerCase(); renderDetailItemsWrap(p); });
+  var diH=modalBox.querySelector('#diHideDone'); if(diH) diH.addEventListener('change', function(){ detailItemsHideDone=this.checked; renderDetailItemsWrap(p); });
   var nc=modalBox.querySelector('[data-new-claim]'); if(nc) nc.addEventListener('click', function(){ newClaimFlow(p.id); });
   modalBox.querySelectorAll('[data-claim]').forEach(function(r){ r.addEventListener('click', function(){ openClaim(r.dataset.claim); }); });
   var np=modalBox.querySelector('[data-new-payment]'); if(np) np.addEventListener('click', function(){ addPaymentFlow(p); });
@@ -1064,7 +1092,6 @@ function wireDetailActions(p){
   var ams=modalBox.querySelector('[data-add-ms]'); if(ams) ams.addEventListener('click', function(){ addMilestone(curProj()); });
   modalBox.querySelectorAll('[data-ms-toggle]').forEach(function(cb){ cb.addEventListener('change', function(){ toggleMilestone(curProj(), +cb.dataset.msToggle); }); });
   modalBox.querySelectorAll('[data-ms-del]').forEach(function(b){ b.addEventListener('click', function(){ delMilestone(curProj(), +b.dataset.msDel); }); });
-  modalBox.querySelectorAll('[data-item-photos]').forEach(function(b){ b.addEventListener('click', function(e){ e.stopPropagation(); openItemPhotos(b.dataset.itemPhotos); }); });
   wirePhotoCards(modalBox, function(){ renderProjectDetail(); });
   modalBox.querySelectorAll('[data-doc-open]').forEach(function(b){ b.addEventListener('click', function(){ openDocument(state.documents[b.dataset.docOpen]); }); });
   modalBox.querySelectorAll('[data-doc-del]').forEach(function(b){ b.addEventListener('click', function(){ if(confirm('Delete this document?')){ deleteDocument(state.documents[b.dataset.docDel]); renderProjectDetail(); } }); });
@@ -1401,75 +1428,16 @@ function showExtractPreview(p, items, sourceLabel){
 /* =====================================================================
    ITEMS VIEW (global)
    ===================================================================== */
-var itemProjFilter=null, itemHideDone=false, itemSectionFilter='';
+/* Pick a project here first, then go inside (its own Items tab) to work
+   with the list — a mixed/dropdown-driven table on this page either forced
+   scrolling through every project's items at once or needed a Project
+   column, both worse than just choosing the project up front. */
 function renderItemsView(){
   var el=document.getElementById('view-items');
   var projs=sortedProjects();
   if(!projs.length){ el.innerHTML='<div class="empty-state">'+((isSalesman()||isLapCoordinator())?'No projects have been assigned to you yet.':'No projects yet.')+'</div>'; return; }
-  // always exactly one project at a time — a mixed "all projects" list made
-  // the Project column necessary and made scanning harder; picking one
-  // project makes the column redundant and the list a lot easier to scan
-  if(!itemProjFilter || !state.projects[itemProjFilter] || !canSeeProject(state.projects[itemProjFilter])) itemProjFilter=projs[0].id;
-  var proj=state.projects[itemProjFilter];
-  var projOpts=projs.map(function(p){ return '<option value="'+p.id+'"'+(itemProjFilter===p.id?' selected':'')+'>'+esc(p.name)+'</option>'; }).join('');
-  el.innerHTML=
-    '<div class="toolbar"><select id="itProjSel">'+projOpts+'</select>'+
-      '<button class="btn btn-secondary btn-sm" id="itOpenProjBtn">Open Project ▸</button>'+
-      '<input type="search" id="itSearch" placeholder="Search items…">'+
-      '<label><input type="checkbox" id="itHideDone"'+(itemHideDone?' checked':'')+'> Hide completed</label>'+
-      (canEdit(proj)?'<button class="btn btn-add spacer" id="addItemBtn">+ New Item</button>':'')+'</div>'+
-    '<div id="itemsTableWrap"></div>';
-  document.getElementById('itProjSel').addEventListener('change', function(){ itemProjFilter=this.value; itemSectionFilter=''; renderItemsView(); });
-  document.getElementById('itOpenProjBtn').addEventListener('click', function(){ openProjectDetail(itemProjFilter,'items'); });
-  document.getElementById('itSearch').addEventListener('input', renderItemsTable);
-  document.getElementById('itHideDone').addEventListener('change', function(){ itemHideDone=this.checked; renderItemsTable(); });
-  var ab=document.getElementById('addItemBtn'); if(ab) ab.addEventListener('click', function(){ openItemForm({projectId:itemProjFilter}); });
-  renderItemsTable();
-}
-function renderItemsTable(){
-  var wrap=document.getElementById('itemsTableWrap'); if(!wrap) return;
-  var proj=state.projects[itemProjFilter];
-  if(!proj || !canSeeProject(proj)){ wrap.innerHTML='<div class="empty-state">That project is not available.</div>'; return; }
-  var q=((document.getElementById('itSearch')||{}).value||'').toLowerCase();
-  var allInProj=Object.values(state.items).filter(function(it){ return it.projectId===itemProjFilter; });
-  var list=allInProj.filter(function(it){
-    if(itemHideDone && (Number(it.percent)||0)>=100) return false;
-    if(itemSectionFilter && (it.section||'')!==itemSectionFilter) return false;
-    if(q && !((it.description||'')+' '+(it.section||'')).toLowerCase().includes(q)) return false;
-    return true;
-  }).sort(function(a,b){ return (a.order||0)-(b.order||0); });
-  var money=canSeePrice(proj), canOp=canOperate(proj);
-  var legend=sectionLegendHTML(allInProj, itemSectionFilter);
-  if(!allInProj.length){ wrap.innerHTML=legend+'<div class="empty-state">No items in this project. Open it and extract or add items.</div>'; return; }
-  wrap.innerHTML=legend+
-    (list.length?
-    '<table class="item-table"><thead><tr><th style="width:52px">No.</th><th>Description</th><th class="num-col">Qty</th><th>Unit</th>'+
-    (money?'<th class="amt">Value</th>':'')+'<th style="width:170px">% Complete</th><th style="width:44px">Photos</th></tr></thead><tbody>'+
-    list.map(function(it){
-      var pct=Number(it.percent)||0; var np=itemPhotos(it.id).length; var scol=sectionColor(it.section);
-      return '<tr>'+
-        '<td class="num-col"'+(scol?' style="border-left:3px solid '+scol+'"':'')+'>'+esc(it.no||'')+'</td>'+
-        '<td class="item-desc">'+esc(it.description||'')+(it.section?'<div style="font-size:11px;color:'+scol+'">'+esc(it.section)+'</div>':'')+'</td>'+
-        '<td class="num-col">'+(it.qty!=null&&it.qty!==''?fmtNum(it.qty):'')+'</td>'+
-        '<td>'+esc(it.unit||'')+'</td>'+
-        (money?'<td class="amt">'+(it.amount?fmtRM(it.amount):'')+'</td>':'')+
-        '<td><div class="pct-cell"><input type="number" class="pct-input" min="0" max="100" value="'+pct+'" data-gpct="'+it.id+'"'+(canOp?'':' readonly')+'>'+
-          '<span class="pct-bar"><span class="pct-fill'+(pct>=100?' done':'')+'" style="width:'+pct+'%"></span></span></div></td>'+
-        '<td><button class="btn-photo'+(np?' has':'')+'" data-item-photos="'+it.id+'" title="Photos">📷'+(np?'<span class="photo-count">'+np+'</span>':'')+'</button></td></tr>';
-    }).join('')+'</tbody></table>'
-    : '<div class="empty-state">No items match.</div>');
-  wrap.querySelectorAll('[data-item-photos]').forEach(function(b){ b.addEventListener('click', function(e){ e.stopPropagation(); openItemPhotos(b.dataset.itemPhotos); }); });
-  wrap.querySelectorAll('[data-sec-filter]').forEach(function(c){ c.addEventListener('click', function(){
-    itemSectionFilter = itemSectionFilter===c.dataset.secFilter ? '' : c.dataset.secFilter;
-    renderItemsTable();
-  }); });
-  wrap.querySelectorAll('[data-gpct]').forEach(function(inp){
-    inp.addEventListener('change', function(){
-      var it=state.items[inp.dataset.gpct]; if(!it||!canOperate(state.projects[it.projectId])) return;
-      var v=Math.max(0,Math.min(100,Math.round(Number(inp.value)||0)));
-      put('items', Object.assign({}, it, {percent:v})); renderItemsTable();
-    });
-  });
+  el.innerHTML='<div class="project-grid">'+projs.map(projectCardHTML).join('')+'</div>';
+  wireProjectCards(el, 'items');
 }
 
 /* =====================================================================
@@ -1478,67 +1446,19 @@ function renderItemsTable(){
 /* per-project current folder on the global Documents page (projectId ->
    folderId); unlike the project-detail modal there can be several project
    panels showing at once, so one shared "current folder" variable won't do */
-var globalDocFolder={};
+/* Pick a project here first, then go inside (its own Documents tab) to
+   browse/upload — showing every project's folders and files stacked on one
+   page at once got busy fast and buried the one project you actually
+   wanted; the project detail modal's Documents tab already has full folder
+   browsing, so nothing is lost by picking a project first. */
 function renderDocuments(){
   var el=document.getElementById('view-documents');
-  var visDocsAll=function(p){ return projectDocs(p.id).filter(function(d){ return canSeeSourceDocs() || !d.source; }); };
-  var visDocsIn=function(p,folderId){ return recordsInFolder('documents',p.id,folderId).filter(function(d){ return canSeeSourceDocs() || !d.source; }); };
-  var projs=sortedProjects().filter(function(p){ return visDocsAll(p).length; });
+  var projs=sortedProjects();
   el.innerHTML=
     (FB_ENABLED?'':'<div class="panel" style="border-color:#5c3a10"><div style="color:#f5b041;font-size:13px">⚠ Local mode — uploaded files are stored in this browser only and are <b>not shared</b>. Connect Firebase for real cloud uploads + AI item extraction.</div></div>')+
-    (projs.length? projs.map(function(p){
-      var cur=globalDocFolder[p.id]||'';
-      var docs=visDocsIn(p,cur);
-      var subs=subFolders(p.id,'doc',cur);
-      var path=cur?folderPath(cur):[];
-      var canOp=canOperate(p);
-      var crumb='<div class="crumbs"><span class="crumb'+(cur?'':' here')+'" data-gdoc-nav="'+p.id+'" data-folder="">📂 '+esc(p.name)+'</span>'+
-        path.map(function(f,i){ return '<span class="crumb-sep">›</span><span class="crumb'+(i===path.length-1?' here':'')+'" data-gdoc-nav="'+p.id+'" data-folder="'+f.id+'">'+esc(f.name)+'</span>'; }).join('')+
-        '</div>';
-      var folderGrid = subs.length? '<div class="folder-grid">'+subs.map(function(f){
-          var nR=visDocsIn(p,f.id).length, nS=subFolders(p.id,'doc',f.id).length;
-          return '<div class="folder-card" data-gdoc-nav="'+p.id+'" data-folder="'+f.id+'">'+
-            (canOp?'<div class="folder-actions"><button data-gdoc-rename="'+f.id+'" title="Rename">✎</button><button data-gdoc-del="'+f.id+'" title="Delete">×</button></div>':'')+
-            '<div class="folder-ico">📁</div><div class="folder-name">'+esc(f.name)+'</div>'+
-            '<div class="folder-meta">'+(nS?nS+' folder'+(nS>1?'s':'')+' • ':'')+nR+' file'+(nR===1?'':'s')+'</div></div>';
-        }).join('')+'</div>' : '';
-      return '<div class="panel"><div class="mini-toolbar"><h3 style="margin:0;cursor:pointer" data-open="'+p.id+'">'+esc(p.name)+'</h3>'+
-        '<div style="display:flex;gap:8px;flex-wrap:wrap">'+
-          (canOp?'<button class="btn btn-secondary btn-sm" data-gdoc-newfolder="'+p.id+'">+ New Folder</button>':'')+
-          '<button class="btn btn-secondary btn-sm" data-open="'+p.id+'">Open project</button>'+
-        '</div></div>'+
-        crumb+
-        (canOp?'<div class="dropzone" data-gdoc-drop="'+p.id+'" style="margin-bottom:12px">Drop files here or <b>click to upload</b> into this folder<input type="file" data-gdoc-input="'+p.id+'" multiple style="display:none"></div>':'')+
-        folderGrid+
-        (docs.length?'<div class="doc-grid">'+docs.map(docCardHTML).join('')+'</div>'
-          :(subs.length?'':'<div class="empty-state" style="padding:14px 0">No documents in this folder</div>'))+
-      '</div>';
-    }).join('') : '<div class="empty-state">No documents yet. Open a project → Documents to upload.</div>');
-
-  el.querySelectorAll('[data-open]').forEach(function(b){ b.addEventListener('click', function(){ openProjectDetail(b.dataset.open,'documents'); }); });
-  el.querySelectorAll('[data-doc-open]').forEach(function(b){ b.addEventListener('click', function(){ openDocument(state.documents[b.dataset.docOpen]); }); });
-  el.querySelectorAll('[data-doc-del]').forEach(function(b){ b.addEventListener('click', function(){ if(confirm('Delete this document?')){ deleteDocument(state.documents[b.dataset.docDel]); renderDocuments(); } }); });
-  el.querySelectorAll('[data-doc-move]').forEach(function(b){ b.addEventListener('click', function(){ openMoveModal('doc','documents',b.dataset.docMove, renderDocuments); }); });
-
-  el.querySelectorAll('[data-gdoc-nav]').forEach(function(c){ c.addEventListener('click', function(e){
-    if(e.target.closest('[data-gdoc-rename],[data-gdoc-del]')) return;
-    globalDocFolder[c.dataset.gdocNav]=c.dataset.folder; renderDocuments();
-  }); });
-  el.querySelectorAll('[data-gdoc-rename]').forEach(function(b){ b.addEventListener('click', function(e){ e.stopPropagation(); renameFolder(state.folders[b.dataset.gdocRename]); }); });
-  el.querySelectorAll('[data-gdoc-del]').forEach(function(b){ b.addEventListener('click', function(e){ e.stopPropagation(); deleteFolder(state.folders[b.dataset.gdocDel]); }); });
-  el.querySelectorAll('[data-gdoc-newfolder]').forEach(function(b){ b.addEventListener('click', function(){
-    var pid=b.dataset.gdocNewfolder;
-    newFolder(state.projects[pid], 'doc', globalDocFolder[pid]||'');
-  }); });
-  el.querySelectorAll('[data-gdoc-drop]').forEach(function(drop){
-    var pid=drop.dataset.gdocDrop, inp=el.querySelector('[data-gdoc-input="'+pid+'"]');
-    var go=function(files){ Array.prototype.forEach.call(files, function(f){ uploadFile(f, pid, {folderId:globalDocFolder[pid]||''}); }); };
-    drop.addEventListener('click', function(){ inp.click(); });
-    inp.addEventListener('change', function(){ go(inp.files); });
-    ['dragover','dragenter'].forEach(function(ev){ drop.addEventListener(ev,function(e){ e.preventDefault(); drop.classList.add('drag-over'); }); });
-    ['dragleave','dragend'].forEach(function(ev){ drop.addEventListener(ev,function(){ drop.classList.remove('drag-over'); }); });
-    drop.addEventListener('drop', function(e){ e.preventDefault(); drop.classList.remove('drag-over'); go(e.dataTransfer.files); });
-  });
+    (projs.length? '<div class="project-grid">'+projs.map(projectCardHTML).join('')+'</div>'
+      : '<div class="empty-state">'+((isSalesman()||isLapCoordinator())?'No projects have been assigned to you yet.':'No projects yet.')+'</div>');
+  wireProjectCards(el, 'documents');
 }
 function wireDocUpload(pid){
   var drop=document.getElementById('docDrop'); if(!drop) return;
@@ -1626,7 +1546,9 @@ function claimTotals(claim){
 }
 
 /* ---- global Claims view ---- */
-var claimProjFilter='all';
+/* Pick a project here first, then go inside (its own Claims tab) to see and
+   raise claims for it — a mixed cross-project claims list needed its own
+   Project column and made scanning harder than just choosing up front. */
 function renderClaims(){
   var el=document.getElementById('view-claims');
   if(!isAdmin() && !isSalesman()){ el.innerHTML='<div class="empty-state">Progress claims are not available for your role.</div>'; return; }
@@ -1634,36 +1556,12 @@ function renderClaims(){
   // a LAP Coordinator sees LAP projects overall, but not their claims unless
   // that specific project is assigned to them as salesman
   var priceProjs=sortedProjects().filter(function(p){ return canSeePrice(p); });
-  var priceIds={}; priceProjs.forEach(function(p){ priceIds[p.id]=1; });
-  var projOpts='<option value="all">All projects</option>'+priceProjs.map(function(p){
-    return '<option value="'+p.id+'"'+(claimProjFilter===p.id?' selected':'')+'>'+esc(p.name)+'</option>'; }).join('');
-  var list=Object.values(state.claims).filter(function(c){
-      if(!priceIds[c.projectId]) return false;
-      return claimProjFilter==='all'||c.projectId===claimProjFilter; })
-    .sort(function(a,b){ var d=(a.projectId||'').localeCompare(b.projectId||''); if(d) return d; return (b.claimNo||0)-(a.claimNo||0); });
-
   el.innerHTML=
-    '<div class="toolbar"><select id="clProjSel">'+projOpts+'</select>'+
-      (priceProjs.length?'<button class="btn btn-add spacer" id="newClaimBtn">+ New Claim</button>':'')+'</div>'+
-    (list.length?
-      '<table class="item-table"><thead><tr><th>Project</th><th style="width:70px">Claim</th><th style="width:100px">Date</th>'+
-        '<th class="amt">Contract</th><th class="amt">To Date</th><th class="amt">This Claim</th><th class="amt">Net Due</th></tr></thead><tbody>'+
-      list.map(function(c){
-        var t=claimTotals(c);
-        return '<tr style="cursor:pointer" data-claim="'+c.id+'">'+
-          '<td>'+esc(projName(c.projectId))+'</td>'+
-          '<td><b>#'+(c.claimNo||'')+'</b></td>'+
-          '<td>'+fmtDate(c.date)+'</td>'+
-          '<td class="amt">'+fmtRM(t.contract)+'</td>'+
-          '<td class="amt">'+fmtRM(t.toDate)+'</td>'+
-          '<td class="amt" style="color:#5dfc8d">'+fmtRM(t.thisAmt)+'</td>'+
-          '<td class="amt" style="color:#4fc3f7">'+fmtRM(t.netDue)+'</td></tr>';
-      }).join('')+'</tbody></table>'
-    : '<div class="empty-state">No progress claims yet. Open a project or click “+ New Claim”.</div>');
-
-  document.getElementById('clProjSel').addEventListener('change', function(){ claimProjFilter=this.value; renderClaims(); });
-  var nb=document.getElementById('newClaimBtn'); if(nb) nb.addEventListener('click', function(){ newClaimFlow(claimProjFilter!=='all'?claimProjFilter:null); });
-  el.querySelectorAll('[data-claim]').forEach(function(r){ r.addEventListener('click', function(){ openClaim(r.dataset.claim); }); });
+    (priceProjs.length?'<div class="toolbar"><button class="btn btn-add spacer" id="newClaimBtn">+ New Claim</button></div>':'')+
+    (priceProjs.length?'<div class="project-grid">'+priceProjs.map(projectCardHTML).join('')+'</div>'
+      :'<div class="empty-state">No projects with claim access yet.</div>');
+  var nb=document.getElementById('newClaimBtn'); if(nb) nb.addEventListener('click', function(){ newClaimFlow(null); });
+  wireProjectCards(el, 'claims');
 }
 
 /* ---- per-project Claims tab ---- */
