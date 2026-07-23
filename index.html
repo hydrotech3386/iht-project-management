@@ -68,6 +68,11 @@ body{font-family:'Segoe UI',sans-serif;background:#1a1a2e;color:#e0e0e0;min-heig
 /* ---------- Toolbar ---------- */
 .toolbar{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:16px;align-items:center}
 .toolbar select,.toolbar input[type=text],.toolbar input[type=search]{background:#0f3460;border:1px solid #333;color:#fff;border-radius:6px;padding:7px 10px;font-size:13px}
+/* a <select>'s closed-box width is driven by its longest option's text
+   (e.g. a long project name) and, as a flex item, won't shrink below that
+   on its own — cap and allow it to shrink so it can't force the toolbar
+   (and the page) wider than the viewport */
+.toolbar select{min-width:0;max-width:100%}
 .toolbar label{font-size:12px;color:#aab4cc;display:flex;align-items:center;gap:6px}
 button.btn{padding:8px 16px;border:none;border-radius:6px;cursor:pointer;font-size:13px;font-weight:600}
 .btn-add{background:#27ae60;color:#fff}
@@ -98,7 +103,12 @@ button.btn{padding:8px 16px;border:none;border-radius:6px;cursor:pointer;font-si
 .panel h3{font-size:14px;color:#fff;margin-bottom:12px;font-weight:700}
 .dash-grid{display:grid;grid-template-columns:1fr 1fr;gap:16px}
 @media (max-width:820px){.dash-grid{grid-template-columns:1fr}}
-.list-row{display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid #0f3460;font-size:13px}
+/* grid/flex items default to min-width:auto, which floors their size at the
+   content's own min-content width — so a long project name can force this
+   panel (and the whole page) wider than the viewport unless told it may
+   shrink below that */
+.dash-grid>.panel{min-width:0}
+.list-row{display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid #0f3460;font-size:13px;min-width:0}
 .list-row:last-child{border-bottom:none}
 .list-row .grow{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .list-row .muted{color:#7a8bb0;font-size:11px}
