@@ -246,6 +246,11 @@ button.btn{padding:8px 16px;border:none;border-radius:6px;cursor:pointer;font-si
 .milestone input[type=checkbox]{width:16px;height:16px;accent-color:#27ae60}
 .milestone .m-name{flex:1}
 .milestone.done .m-name{text-decoration:line-through;color:#7a8bb0}
+.ms-days{font-size:10px;font-weight:700;text-transform:uppercase;padding:3px 8px;border-radius:10px;white-space:nowrap}
+.ms-days.overdue{background:#4a1e1e;color:#ff8a8a}
+.ms-days.today{background:#5c3a10;color:#f5b041}
+.ms-days.upcoming{background:#0f3460;color:#7a8bb0}
+.ms-days.done{background:#1e4a2e;color:#5dfc8d}
 
 /* extract preview */
 .extract-note{background:#231a3a;border:1px solid #3a2a5a;border-radius:9px;padding:10px 12px;font-size:12px;color:#c9b3f2;margin-bottom:12px}
@@ -943,6 +948,7 @@ function detailOverview(p){
       (ms.length? ms.map(function(m,i){
         return '<div class="milestone'+(m.done?' done':'')+'"><input type="checkbox" data-ms-toggle="'+i+'"'+(m.done?' checked':'')+(canEdit(p)?'':' disabled')+'>'+
           '<span class="m-name">'+esc(m.name)+'</span><span class="muted">'+fmtDate(m.date)+'</span>'+
+          milestoneDaysHTML(m)+
           (canEdit(p)?'<button class="btn btn-danger btn-sm" data-ms-del="'+i+'">×</button>':'')+'</div>';
       }).join('') : '<div class="empty-state" style="padding:16px 0">No milestones</div>')+
     '</div>';
@@ -1098,6 +1104,19 @@ function wireDetailActions(p){
 }
 
 /* ---------- milestones ---------- */
+function daysUntil(dateStr){
+  if(!dateStr) return null;
+  var d=Math.round((new Date(dateStr+'T00:00:00') - new Date(todayISO()+'T00:00:00'))/86400000);
+  return isNaN(d)? null : d;
+}
+function milestoneDaysHTML(m){
+  if(m.done) return '<span class="ms-days done">Done</span>';
+  var d=daysUntil(m.date);
+  if(d==null) return '';
+  if(d<0) return '<span class="ms-days overdue">'+Math.abs(d)+' day'+(Math.abs(d)===1?'':'s')+' overdue</span>';
+  if(d===0) return '<span class="ms-days today">Due today</span>';
+  return '<span class="ms-days upcoming">'+d+' day'+(d===1?'':'s')+' left</span>';
+}
 function addMilestone(p){
   openModal(
     '<div class="modal-head"><h2>New Milestone</h2><button class="modal-close" data-close>&times;</button></div>'+
