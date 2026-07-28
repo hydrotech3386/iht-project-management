@@ -403,7 +403,8 @@ button.btn{padding:8px 16px;border:none;border-radius:6px;cursor:pointer;font-si
       <div class="nav-item" data-view="calendar"><span class="nav-ico">▦</span> Calendar</div>
       <div class="nav-item" data-view="weekly"><span class="nav-ico">▧</span> Weekly Schedule</div>
       <div class="nav-item" data-view="projects"><span class="nav-ico">◈</span> Projects</div>
-      <div class="nav-item" data-view="items"><span class="nav-ico">☑</span> Items</div>
+      <div class="nav-item" data-view="items"><span class="nav-ico">☑</span> Scope of Works</div>
+      <div class="nav-item" data-view="workdone"><span class="nav-ico">▥</span> Work Done</div>
       <div class="nav-item money-only" data-view="claims"><span class="nav-ico">◧</span> Claims</div>
       <div class="nav-item" data-view="documents"><span class="nav-ico">▤</span> Documents</div>
       <div class="nav-item admin-only" data-view="users" style="display:none"><span class="nav-ico">⚙</span> Users</div>
@@ -434,6 +435,7 @@ button.btn{padding:8px 16px;border:none;border-radius:6px;cursor:pointer;font-si
       <div class="view" id="view-weekly"></div>
       <div class="view" id="view-projects"></div>
       <div class="view" id="view-items"></div>
+      <div class="view" id="view-workdone"></div>
       <div class="view" id="view-claims"></div>
       <div class="view" id="view-documents"></div>
       <div class="view" id="view-users"></div>
@@ -1002,7 +1004,7 @@ function downloadXLS(filename, sheetName, colWidths, rowsXML){
       ' xmlns:ss="urn:schemas-microsoft-com:office:spreadsheet">'+
     '<Styles>'+XL_SCHED_STYLES+'</Styles>'+
     '<Worksheet ss:Name="'+xlEsc(sheetName)+'">'+
-      '<Table ss:DefaultColumnWidth="90" ss:DefaultRowHeight="16">'+cols+rowsXML.join('')+'</Table>'+
+      '<Table ss:DefaultColumnWidth="90">'+cols+rowsXML.join('')+'</Table>'+
       '<WorksheetOptions xmlns="urn:schemas-microsoft-com:office:excel">'+
         '<PageSetup><Layout x:Orientation="Landscape"/><PageMargins x:Bottom="0.5" x:Left="0.4" x:Right="0.4" x:Top="0.5"/></PageSetup>'+
         '<FitToPage/><Print><FitWidth>1</FitWidth><FitHeight>0</FitHeight><PaperSizeIndex>9</PaperSizeIndex></Print>'+
@@ -1085,14 +1087,14 @@ function exportWeeklyScheduleExcel(){
       var iso=toISODate(d);
       var jobs=(byDate[iso]||[]).filter(function(j){ return (j.assignees||[]).indexOf(m.name)>=0; });
       var abs=getAttendance(iso)[m.name];
-      var text = jobs.map(function(j){ return (j.project?j.project+' — ':'')+j.task; }).join('; ');
-      if(abs) text = (text?text+' | ':'') + ABSENCE_LABELS[abs];
+      var text = jobs.map(function(j){ return (j.project?j.project+' — ':'')+j.task; }).join('\n');
+      if(abs) text = (text?text+'\n':'') + '['+ABSENCE_LABELS[abs]+']';
       cells.push({v:text,s:'schCell'});
     });
     return xlRow(cells);
   });
   var label=fmtShortD(days[0])+' – '+fmtShortD(days[5]);
-  var widths=[110,90].concat(days.map(function(){ return 150; }));
+  var widths=[110,90].concat(days.map(function(){ return 190; }));
   downloadXLS('Weekly Schedule - '+label, 'Weekly Schedule', widths, [header].concat(rows));
 }
 
@@ -1128,7 +1130,7 @@ function subscribeFirebase(){
 
 /* ---------- navigation ---------- */
 var currentView = 'dashboard';
-var VIEW_TITLES = { dashboard:'Dashboard', calendar:'Team Calendar', weekly:'Weekly Schedule', projects:'Projects', items:'Items', claims:'Progress Claims', documents:'Documents', users:'Users' };
+var VIEW_TITLES = { dashboard:'Dashboard', calendar:'Team Calendar', weekly:'Weekly Schedule', projects:'Projects', items:'Scope of Works', workdone:'Work Done', claims:'Progress Claims', documents:'Documents', users:'Users' };
 function switchView(v){
   currentView=v;
   document.querySelectorAll('.nav-item').forEach(function(n){ n.classList.toggle('active', n.dataset.view===v); });
@@ -1137,7 +1139,7 @@ function switchView(v){
   closeSidebar(); renderCurrent();
 }
 function renderCurrent(){
-  var r = { dashboard:renderDashboard, calendar:renderCalendarView, weekly:renderWeeklyView, projects:renderProjects, items:renderItemsView, claims:renderClaims, documents:renderDocuments, users:renderUsers }[currentView];
+  var r = { dashboard:renderDashboard, calendar:renderCalendarView, weekly:renderWeeklyView, projects:renderProjects, items:renderItemsView, workdone:renderWorkDoneView, claims:renderClaims, documents:renderDocuments, users:renderUsers }[currentView];
   if(r) r();
 }
 document.getElementById('navMenu').addEventListener('click', function(e){ var i=e.target.closest('.nav-item'); if(i) switchView(i.dataset.view); });
@@ -1488,7 +1490,7 @@ function renderProjectDetail(){
       '<div class="sub">'+[p.projectType,statusLabel(p.status),p.client,p.site].filter(Boolean).map(esc).join(' • ')+'</div>'+
     '</div><button class="modal-close" data-close>&times;</button></div>';
   var tabList=['overview','items','workdone','photos','documents'].concat(canSeePrice(p)?['claims']:[]);
-  var TAB_LABELS={overview:'Overview',items:'Items',workdone:'Work Done',photos:'Photos',documents:'Documents',claims:'Claims'};
+  var TAB_LABELS={overview:'Overview',items:'Scope of Works',workdone:'Work Done',photos:'Photos',documents:'Documents',claims:'Claims'};
   var tabs='<div class="detail-tabs">'+tabList.map(function(t){
       return '<div class="detail-tab'+(detailTab===t?' active':'')+'" data-tab="'+t+'">'+TAB_LABELS[t]+'</div>'; }).join('')+'</div>';
   openModal(head+tabs+'<div id="detailBody"></div>', true);
@@ -1542,9 +1544,9 @@ var detailItemsSectionFilter='', detailItemsSearch='', detailItemsHideDone=false
    resolves to this project's name), oldest first, with a running man-days total.
    Multi-day jobs (only possible via the Project modal's inline job editor, which
    still allows a start/end range) are expanded so each day they span counts once. */
-function projectWorkReport(projId){
+function buildWorkReport(jobs){
   var rows=[];
-  jobsForProject(projId).filter(function(j){ return j.start && j.end; }).forEach(function(j){
+  jobs.filter(function(j){ return j.start && j.end; }).forEach(function(j){
     var s=parseISODate(j.start), e=parseISODate(j.end), d=new Date(s), n=(j.assignees||[]).length;
     while(d<=e){ rows.push({date:toISODate(d), job:j.name, workers:n}); d=addDaysD(d,1); }
   });
@@ -1552,13 +1554,39 @@ function projectWorkReport(projId){
   var manDays=rows.reduce(function(s,r){ return s+r.workers; }, 0);
   return {rows:rows, manDays:manDays};
 }
+function projectWorkReport(projId){ return buildWorkReport(jobsForProject(projId)); }
+function unassignedWorkReport(){ return buildWorkReport(Object.values(state.jobs).filter(function(j){ return !j.projectId; })); }
+function workReportTableHTML(rep){
+  return '<table class="item-table"><thead><tr><th style="width:100px">Date</th><th>Job</th><th class="num-col" style="width:80px">Workers</th></tr></thead><tbody>'+
+    rep.rows.map(function(r){ return '<tr><td>'+fmtDate(r.date)+'</td><td>'+esc(r.job)+'</td><td class="num-col">'+r.workers+'</td></tr>'; }).join('')+
+    '</tbody><tfoot><tr><td colspan="2"><b>Total Man-Days</b></td><td class="num-col"><b>'+rep.manDays+'</b></td></tr></tfoot></table>';
+}
 function detailWorkDone(p){
   var rep=projectWorkReport(p.id);
   if(!rep.rows.length) return '<div class="empty-state">No scheduled jobs linked to this project yet. Jobs added via Calendar or Weekly Schedule with this project selected will show up here.</div>';
   return '<div style="font-size:12px;color:#7a8bb0;margin-bottom:10px">From the Calendar / Weekly Schedule — only jobs explicitly linked to this project.</div>'+
-    '<table class="item-table"><thead><tr><th style="width:100px">Date</th><th>Job</th><th class="num-col" style="width:80px">Workers</th></tr></thead><tbody>'+
-    rep.rows.map(function(r){ return '<tr><td>'+fmtDate(r.date)+'</td><td>'+esc(r.job)+'</td><td class="num-col">'+r.workers+'</td></tr>'; }).join('')+
-    '</tbody><tfoot><tr><td colspan="2"><b>Total Man-Days</b></td><td class="num-col"><b>'+rep.manDays+'</b></td></tr></tfoot></table>';
+    workReportTableHTML(rep);
+}
+
+/* ---------- Work Done (sidebar page) — every project's chronological work log, all in one place ---------- */
+function renderWorkDoneView(){
+  var el=document.getElementById('view-workdone');
+  var projs=Object.values(state.projects).filter(canSeeProject).sort(function(a,b){ return (a.name||'').localeCompare(b.name||''); });
+  var sections='', grandTotal=0, any=false;
+  projs.forEach(function(p){
+    var rep=projectWorkReport(p.id);
+    if(!rep.rows.length) return;
+    any=true; grandTotal+=rep.manDays;
+    sections+='<div class="panel"><h3>'+esc(p.name)+'</h3>'+workReportTableHTML(rep)+'</div>';
+  });
+  var unrep=unassignedWorkReport();
+  if(unrep.rows.length){
+    any=true; grandTotal+=unrep.manDays;
+    sections+='<div class="panel"><h3>Unassigned / No Project</h3>'+workReportTableHTML(unrep)+'</div>';
+  }
+  el.innerHTML = any
+    ? sections+'<div style="text-align:right;font-size:14px;font-weight:bold;color:#fff;margin-top:6px">GRAND TOTAL MAN-DAYS: '+grandTotal+'</div>'
+    : '<div class="empty-state">No scheduled jobs yet. Add jobs via Calendar or Weekly Schedule.</div>';
 }
 function detailItems(p){
   var allIts=projectItems(p.id);
