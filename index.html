@@ -1019,16 +1019,25 @@ function downloadXLS(filename, sheetName, colWidths, rowsXML){
 function printMonthCalendar(){
   var monthLabel=calMonthCursor.toLocaleDateString('en-GB',{month:'long',year:'numeric'});
   var byDate=jobsByDate();
-  var dates=Object.keys(byDate).filter(function(iso){
-    var d=parseISODate(iso); return d.getFullYear()===calMonthCursor.getFullYear() && d.getMonth()===calMonthCursor.getMonth();
-  }).sort();
-  var rowsHTML=dates.map(function(iso){
-    return byDate[iso].map(function(j){
-      return '<tr><td>'+fmtDate(iso)+'</td><td>'+esc(j.project||'')+'</td><td>'+esc(j.task)+'</td><td>'+esc((j.assignees||[]).join(', '))+'</td><td>'+esc(j.status)+'</td></tr>';
-    }).join('');
-  }).join('');
+  var year=calMonthCursor.getFullYear(), month=calMonthCursor.getMonth();
+  var firstDow=new Date(year,month,1).getDay();
+  var daysInMonth=new Date(year,month+1,0).getDate();
+  var gridStart=addDaysD(new Date(year,month,1), -firstDow);
+  var totalCells=Math.ceil((firstDow+daysInMonth)/7)*7;
+
+  var rowsHTML='';
+  for(var w=0; w<totalCells/7; w++){
+    rowsHTML+='<tr>';
+    for(var d=0; d<7; d++){
+      var day=addDaysD(gridStart, w*7+d), iso=toISODate(day);
+      if(day.getMonth()!==month){ rowsHTML+='<td style="background:#f2f2f2"></td>'; continue; }
+      var jobs=byDate[iso]||[];
+      rowsHTML+='<td><b>'+day.getDate()+'</b><br>'+jobs.map(function(j){ return '<div class="sd-job"><b>'+esc(j.project||j.task)+'</b>'+(j.project?esc(j.task):'')+'</div>'; }).join('')+'</td>';
+    }
+    rowsHTML+='</tr>';
+  }
   var html=scheduleDocHead('Team Calendar — '+monthLabel)+
-    '<table><thead><tr><th style="width:75px">Date</th><th>Project / Site</th><th>Job</th><th>Team</th><th style="width:65px">Status</th></tr></thead><tbody>'+rowsHTML+'</tbody></table>';
+    '<table><thead><tr><th>Sun</th><th>Mon</th><th>Tue</th><th>Wed</th><th>Thu</th><th>Fri</th><th>Sat</th></tr></thead><tbody>'+rowsHTML+'</tbody></table>';
   openPrintWindow('Team Calendar - '+monthLabel, html);
 }
 function exportMonthCalendarExcel(){
