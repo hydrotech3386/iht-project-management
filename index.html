@@ -1016,63 +1016,35 @@ function downloadXLS(filename, sheetName, colWidths, rowsXML){
   setTimeout(function(){ URL.revokeObjectURL(a.href); a.remove(); }, 1500);
 }
 
-/* Chronological work-done report, grouped by project/site — every visible job in
-   the currently viewed month, oldest first within each group, worker count per
-   job, man-days = sum of worker counts (a multi-day job counts once per day it
-   spans, via jobsByDate's date expansion, so man-days stays correct even then). */
-function monthWorkReport(){
+function printMonthCalendar(){
+  var monthLabel=calMonthCursor.toLocaleDateString('en-GB',{month:'long',year:'numeric'});
   var byDate=jobsByDate();
   var dates=Object.keys(byDate).filter(function(iso){
     var d=parseISODate(iso); return d.getFullYear()===calMonthCursor.getFullYear() && d.getMonth()===calMonthCursor.getMonth();
   }).sort();
-  var groups={}, order=[];
-  dates.forEach(function(iso){
-    byDate[iso].forEach(function(j){
-      var label=j.project||'(No Project / Site)';
-      if(!groups[label]){ groups[label]={rows:[],manDays:0}; order.push(label); }
-      var n=(j.assignees||[]).length;
-      groups[label].rows.push({date:iso, job:j.task, workers:n});
-      groups[label].manDays += n;
-    });
-  });
-  order.sort(function(a,b){
-    if(a==='(No Project / Site)') return 1;
-    if(b==='(No Project / Site)') return -1;
-    return a.localeCompare(b);
-  });
-  return {order:order, groups:groups};
-}
-
-function printMonthCalendar(){
-  var monthLabel=calMonthCursor.toLocaleDateString('en-GB',{month:'long',year:'numeric'});
-  var data=monthWorkReport();
-  var grandTotal=0;
-  var sections=data.order.map(function(label){
-    var g=data.groups[label]; grandTotal+=g.manDays;
-    return '<h3 style="font-size:12px;color:#16213e;margin:14px 0 4px">'+esc(label)+'</h3>'+
-      '<table><thead><tr><th style="width:90px">Date</th><th>Job</th><th style="width:70px" class="num-col">Workers</th></tr></thead><tbody>'+
-      g.rows.map(function(r){ return '<tr><td>'+fmtDate(r.date)+'</td><td>'+esc(r.job)+'</td><td class="num-col">'+r.workers+'</td></tr>'; }).join('')+
-      '</tbody><tfoot><tr><td colspan="2">Total Man-Days</td><td class="num-col">'+g.manDays+'</td></tr></tfoot></table>';
+  var rowsHTML=dates.map(function(iso){
+    return byDate[iso].map(function(j){
+      return '<tr><td>'+fmtDate(iso)+'</td><td>'+esc(j.project||'')+'</td><td>'+esc(j.task)+'</td><td>'+esc((j.assignees||[]).join(', '))+'</td><td>'+esc(j.status)+'</td></tr>';
+    }).join('');
   }).join('');
   var html=scheduleDocHead('Team Calendar — '+monthLabel)+
-    sections+
-    '<div style="margin-top:14px;font-size:12px;font-weight:bold;text-align:right">GRAND TOTAL MAN-DAYS: '+grandTotal+'</div>';
+    '<table><thead><tr><th style="width:75px">Date</th><th>Project / Site</th><th>Job</th><th>Team</th><th style="width:65px">Status</th></tr></thead><tbody>'+rowsHTML+'</tbody></table>';
   openPrintWindow('Team Calendar - '+monthLabel, html);
 }
 function exportMonthCalendarExcel(){
   var monthLabel=calMonthCursor.toLocaleDateString('en-GB',{month:'long',year:'numeric'});
-  var data=monthWorkReport();
-  var rows=[], grandTotal=0;
-  data.order.forEach(function(label){
-    var g=data.groups[label]; grandTotal+=g.manDays;
-    rows.push(xlRow([{v:label,s:'schGroup',m:2}], 20));
-    rows.push(xlRow([{v:'Date',s:'schHdr'},{v:'Job',s:'schHdr'},{v:'Workers',s:'schHdr'}]));
-    g.rows.forEach(function(r){ rows.push(xlRow([{v:r.date,s:'schCell'},{v:r.job,s:'schCell'},{v:r.workers,s:'schNum'}])); });
-    rows.push(xlRow([{v:'Total Man-Days',s:'schTot',m:1},{v:g.manDays,s:'schTot'}]));
-    rows.push(xlRow([{v:''}])); // spacer
+  var byDate=jobsByDate();
+  var dates=Object.keys(byDate).filter(function(iso){
+    var d=parseISODate(iso); return d.getFullYear()===calMonthCursor.getFullYear() && d.getMonth()===calMonthCursor.getMonth();
+  }).sort();
+  var header=xlRow(['Date','Project / Site','Job','Team','Status'].map(function(h){ return {v:h,s:'schHdr'}; }));
+  var rows=[header];
+  dates.forEach(function(iso){
+    byDate[iso].forEach(function(j){
+      rows.push(xlRow([{v:iso,s:'schCell'},{v:j.project||'',s:'schCell'},{v:j.task||'',s:'schCell'},{v:(j.assignees||[]).join(', '),s:'schCell'},{v:j.status||'',s:'schCell'}]));
+    });
   });
-  rows.push(xlRow([{v:'GRAND TOTAL MAN-DAYS',s:'schGrand',m:1},{v:grandTotal,s:'schGrand'}]));
-  downloadXLS('Team Calendar - '+monthLabel, 'Calendar', [90,340,70], rows);
+  downloadXLS('Team Calendar - '+monthLabel, 'Calendar', [75,200,260,180,70], rows);
 }
 
 function printWeeklySchedule(){
@@ -1506,9 +1478,10 @@ function renderProjectDetail(){
   var head='<div class="modal-head"><div><h2>'+esc(p.name)+'</h2>'+
       '<div class="sub">'+[p.projectType,statusLabel(p.status),p.client,p.site].filter(Boolean).map(esc).join(' • ')+'</div>'+
     '</div><button class="modal-close" data-close>&times;</button></div>';
-  var tabList=['overview','items','photos','documents'].concat(canSeePrice(p)?['claims']:[]);
+  var tabList=['overview','items','workdone','photos','documents'].concat(canSeePrice(p)?['claims']:[]);
+  var TAB_LABELS={overview:'Overview',items:'Items',workdone:'Work Done',photos:'Photos',documents:'Documents',claims:'Claims'};
   var tabs='<div class="detail-tabs">'+tabList.map(function(t){
-      return '<div class="detail-tab'+(detailTab===t?' active':'')+'" data-tab="'+t+'">'+t.charAt(0).toUpperCase()+t.slice(1)+'</div>'; }).join('')+'</div>';
+      return '<div class="detail-tab'+(detailTab===t?' active':'')+'" data-tab="'+t+'">'+TAB_LABELS[t]+'</div>'; }).join('')+'</div>';
   openModal(head+tabs+'<div id="detailBody"></div>', true);
   bindClose();
   modalBox.querySelectorAll('.detail-tab').forEach(function(t){ t.addEventListener('click', function(){ detailTab=t.dataset.tab; renderProjectDetail(); }); });
@@ -1519,6 +1492,7 @@ function renderDetailBody(){
   var p=curProj(); var body=document.getElementById('detailBody');
   if(detailTab==='overview') body.innerHTML=detailOverview(p);
   else if(detailTab==='items'){ body.innerHTML=detailItems(p); renderDetailItemsWrap(p); }
+  else if(detailTab==='workdone') body.innerHTML=detailWorkDone(p);
   else if(detailTab==='photos'){ body.innerHTML=detailPhotos(p); wireProjectPhotoUpload(p); wireFolderChrome(p); }
   else if(detailTab==='claims') body.innerHTML=detailClaims(p);
   else if(detailTab==='documents'){ body.innerHTML=detailDocuments(p); wireDocUpload(p.id); wireFolderChrome(p); }
@@ -1554,6 +1528,29 @@ var detailItemsSectionFilter='', detailItemsSearch='', detailItemsHideDone=false
    #detailItemsWrap that renderDetailItemsWrap() alone rebuilds on every
    filter change, so typing a search term never blows away the input's own
    focus/cursor the way rebuilding this whole shell on every keystroke would */
+/* Chronological ledger of scheduled work for this specific project — every job
+   linked via jobsForProject (projectId match, set when Add Job's project field
+   resolves to this project's name), oldest first, with a running man-days total.
+   Multi-day jobs (only possible via the Project modal's inline job editor, which
+   still allows a start/end range) are expanded so each day they span counts once. */
+function projectWorkReport(projId){
+  var rows=[];
+  jobsForProject(projId).filter(function(j){ return j.start && j.end; }).forEach(function(j){
+    var s=parseISODate(j.start), e=parseISODate(j.end), d=new Date(s), n=(j.assignees||[]).length;
+    while(d<=e){ rows.push({date:toISODate(d), job:j.name, workers:n}); d=addDaysD(d,1); }
+  });
+  rows.sort(function(a,b){ return a.date<b.date?-1:(a.date>b.date?1:0); });
+  var manDays=rows.reduce(function(s,r){ return s+r.workers; }, 0);
+  return {rows:rows, manDays:manDays};
+}
+function detailWorkDone(p){
+  var rep=projectWorkReport(p.id);
+  if(!rep.rows.length) return '<div class="empty-state">No scheduled jobs linked to this project yet. Jobs added via Calendar or Weekly Schedule with this project selected will show up here.</div>';
+  return '<div style="font-size:12px;color:#7a8bb0;margin-bottom:10px">From the Calendar / Weekly Schedule — only jobs explicitly linked to this project.</div>'+
+    '<table class="item-table"><thead><tr><th style="width:100px">Date</th><th>Job</th><th class="num-col" style="width:80px">Workers</th></tr></thead><tbody>'+
+    rep.rows.map(function(r){ return '<tr><td>'+fmtDate(r.date)+'</td><td>'+esc(r.job)+'</td><td class="num-col">'+r.workers+'</td></tr>'; }).join('')+
+    '</tbody><tfoot><tr><td colspan="2"><b>Total Man-Days</b></td><td class="num-col"><b>'+rep.manDays+'</b></td></tr></tfoot></table>';
+}
 function detailItems(p){
   var allIts=projectItems(p.id);
   var cv=contractValue(p.id); var money=canSeePrice(p);
