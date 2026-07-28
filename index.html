@@ -650,7 +650,6 @@ function setAttendance(dateISO, name, type){
 var calMonthCursor = startOfMonthD(new Date());
 function renderCalendarView(){
   var el=document.getElementById('view-calendar');
-  var projs=Object.values(state.projects).filter(canSeeProject);
   var todayISO=toISODate(new Date());
   var byDate=jobsByDate();
 
@@ -677,24 +676,14 @@ function renderCalendarView(){
     weeksHTML+='</div>';
   }
 
-  var onSite = {}; (byDate[todayISO]||[]).forEach(function(j){ (j.assignees||[]).forEach(function(n){ onSite[n]=1; }); });
-  var weekStart=mondayOfD(new Date()), weekEnd=addDaysD(weekStart,5);
-  var jobsThisWeek = visibleJobs().filter(function(j){
-    if(!j.start||!j.end) return false;
-    var s=parseISODate(j.start), e=parseISODate(j.end);
-    return s<=weekEnd && e>=weekStart;
-  }).length;
-
   el.innerHTML =
-    '<div class="stat-row">'+
-      statCard(projs.filter(function(p){return p.status!=='completed';}).length,'On-going Projects')+
-      statCard(Object.keys(onSite).length,'Team On Site Today')+
-      statCard(jobsThisWeek,'Jobs This Week')+
-      statCard(projs.filter(function(p){return p.status==='delayed';}).length,'Delayed','alert')+
-    '</div>'+
     '<div class="cal-month-toolbar">'+
       '<div class="cal-nav"><button data-cal-prev>‹</button><span class="month-label">'+calMonthCursor.toLocaleDateString('en-GB',{month:'long',year:'numeric'})+'</span><button data-cal-next>›</button><button data-cal-today>This Month</button></div>'+
-      (canOperate()? '<div><button class="btn btn-secondary btn-sm" data-manage-team>Manage Team</button> <button class="btn btn-add btn-sm" data-add-job>+ Add Job</button></div>' : '')+
+      '<div>'+
+        '<button class="btn btn-secondary btn-sm" data-export-pdf>Export PDF</button> '+
+        '<button class="btn btn-secondary btn-sm" data-export-xls>Export Excel</button> '+
+        (canOperate()? '<button class="btn btn-secondary btn-sm" data-mark-attendance>Mark Attendance</button> <button class="btn btn-secondary btn-sm" data-manage-team>Manage Team</button> <button class="btn btn-add btn-sm" data-add-job>+ Add Job</button>' : '')+
+      '</div>'+
     '</div>'+
     '<div class="month-grid"><div class="dow-row"><div>Sun</div><div>Mon</div><div>Tue</div><div>Wed</div><div>Thu</div><div>Fri</div><div>Sat</div></div>'+weeksHTML+'</div>';
 
@@ -702,6 +691,9 @@ function renderCalendarView(){
   el.querySelectorAll('[data-day]').forEach(function(cell){ cell.addEventListener('click', function(){ openDayDetailModal(cell.dataset.day); }); });
   var mt=el.querySelector('[data-manage-team]'); if(mt) mt.addEventListener('click', openTeamModal);
   var aj=el.querySelector('[data-add-job]'); if(aj) aj.addEventListener('click', function(){ openJobModal(null); });
+  var ma=el.querySelector('[data-mark-attendance]'); if(ma) ma.addEventListener('click', function(){ openAttendanceModal(); });
+  el.querySelector('[data-export-pdf]').addEventListener('click', printMonthCalendar);
+  el.querySelector('[data-export-xls]').addEventListener('click', exportMonthCalendarExcel);
 }
 function bindCalendarNav(rerender, setCursor){
   var el=document.querySelector('.view.active');
@@ -735,7 +727,7 @@ function openDayDetailModal(iso){
   bindClose();
   modalBox.querySelectorAll('[data-job-edit]').forEach(function(row){ row.addEventListener('click', function(){ closeModal(); openJobModal(row.dataset.jobEdit); }); });
   var addBtn=modalBox.querySelector('[data-add-job-day]'); if(addBtn) addBtn.addEventListener('click', function(){ closeModal(); openJobModal(null, iso); });
-  bindLeaveRow(iso);
+  bindLeaveRow(document.getElementById('dayLeaveRow'), iso);
 }
 function buildLeaveRowHTML(iso){
   var att=getAttendance(iso);
@@ -748,13 +740,13 @@ function buildLeaveRowHTML(iso){
     '</div>';
   }).join('');
 }
-function bindLeaveRow(iso){
-  var row=document.getElementById('dayLeaveRow');
+function bindLeaveRow(row, iso){
   if(!row) return;
   row.querySelectorAll('[data-leave]').forEach(function(b){ b.addEventListener('click', function(){
     setAttendance(iso, b.dataset.leave, b.dataset.type);
     row.innerHTML = buildLeaveRowHTML(iso);
-    bindLeaveRow(iso);
+    bindLeaveRow(row, iso);
+    renderCurrent(); // refresh the absence tag on whichever schedule view is behind the modal
   }); });
 }
 
@@ -769,7 +761,11 @@ function renderWeeklyView(){
   var toolbarHTML =
     '<div class="cal-month-toolbar">'+
       '<div class="week-nav"><button data-week-prev>◀ Prev</button><span class="week-label">'+fmtShortD(days[0])+' – '+fmtShortD(days[5])+'</span><button data-week-next>Next ▶</button><button data-week-today>This Week</button></div>'+
-      (canOperate()? '<div><button class="btn btn-secondary btn-sm" data-manage-team>Manage Team</button> <button class="btn btn-add btn-sm" data-add-job>+ Add Job</button></div>' : '')+
+      '<div>'+
+        '<button class="btn btn-secondary btn-sm" data-export-pdf>Export PDF</button> '+
+        '<button class="btn btn-secondary btn-sm" data-export-xls>Export Excel</button> '+
+        (canOperate()? '<button class="btn btn-secondary btn-sm" data-mark-attendance>Mark Attendance</button> <button class="btn btn-secondary btn-sm" data-manage-team>Manage Team</button> <button class="btn btn-add btn-sm" data-add-job>+ Add Job</button>' : '')+
+      '</div>'+
     '</div>';
 
   if(!team.length){
@@ -815,6 +811,9 @@ function renderWeeklyView(){
   el.querySelector('[data-week-today]').addEventListener('click', function(){ weekCursor=mondayOfD(new Date()); renderWeeklyView(); });
   var mt=el.querySelector('[data-manage-team]'); if(mt) mt.addEventListener('click', openTeamModal);
   var aj=el.querySelector('[data-add-job]'); if(aj) aj.addEventListener('click', function(){ openJobModal(null); });
+  var ma=el.querySelector('[data-mark-attendance]'); if(ma) ma.addEventListener('click', function(){ openAttendanceModal(); });
+  el.querySelector('[data-export-pdf]').addEventListener('click', printWeeklySchedule);
+  el.querySelector('[data-export-xls]').addEventListener('click', exportWeeklyScheduleExcel);
 }
 
 /* ---------- Job modal (add/edit) ---------- */
@@ -926,6 +925,147 @@ function openTeamModal(){
     var name=prompt('Name of the team member to add:'); name=(name||'').trim(); if(!name) return;
     put('team', {id:uid(), name:name, trade:'', createdAt:Date.now()}); toast('Added '+name,'ok'); openTeamModal(); renderCurrent();
   });
+}
+
+/* ---------- Mark Attendance (direct entry point — not buried behind a day click) ---------- */
+function openAttendanceModal(dateHint){
+  var dateVal = dateHint || todayISO();
+  openModal(
+    '<div class="modal-head"><h2>Mark Attendance</h2><button class="modal-close" data-close>&times;</button></div>'+
+    field('Date','attDate',dateVal,'date',true)+
+    '<div class="leave-section"><label>Absent</label><div class="leave-row" id="attLeaveRow"></div></div>'+
+    '<div class="modal-foot"><button class="btn btn-secondary" data-close>Close</button></div>'
+  );
+  bindClose();
+  refreshAttendanceRow();
+  document.getElementById('attDate').addEventListener('change', refreshAttendanceRow);
+}
+function refreshAttendanceRow(){
+  var iso=val('attDate'), row=document.getElementById('attLeaveRow');
+  row.innerHTML = buildLeaveRowHTML(iso);
+  bindLeaveRow(row, iso);
+}
+
+/* ---------- Calendar / Weekly Schedule exports (PDF via print, Excel via SpreadsheetML) ---------- */
+var SCHEDULE_PRINT_CSS =
+ '@page{size:A4 landscape;margin:12mm}'+
+ 'body{font-family:Arial,Helvetica,sans-serif;font-size:10px;color:#000;background:#fff;margin:0}'+
+ '.sd-head{display:flex;align-items:center;gap:14px;border-bottom:2px solid #16213e;padding-bottom:8px;margin-bottom:12px}'+
+ '.sd-logo{height:46px;object-fit:contain;filter:brightness(0.25)}'+
+ '.sd-title{font-size:15px;text-align:center;margin:8px 0 12px;letter-spacing:1px}'+
+ 'table{width:100%;border-collapse:collapse;font-size:9px}'+
+ 'th,td{border:1px solid #666;padding:4px 5px;vertical-align:top}'+
+ 'th{background:#e6e9f0;font-weight:bold;text-align:left}'+
+ '.sd-job{margin-bottom:3px}'+
+ '.sd-job b{display:block}'+
+ '.sd-abs{font-weight:bold}';
+function scheduleDocHead(title){
+  var logo=document.querySelector('.sidebar .logo-img');
+  return '<div class="sd-head">'+(logo?'<img class="sd-logo" src="'+logo.src+'">':'')+
+    '<div><div style="font-size:13px;font-weight:bold">Ipoh Hydrotech Engineering Sdn Bhd</div></div></div>'+
+    '<div class="sd-title">'+esc(title)+'</div>';
+}
+function openPrintWindow(title, bodyHTML){
+  var w=window.open('','_blank');
+  if(!w){ toast('Popup blocked — allow popups to export','err'); return; }
+  w.document.write('<!DOCTYPE html><html><head><meta charset="utf-8"><title>'+esc(title)+'</title><style>'+SCHEDULE_PRINT_CSS+'</style></head><body>'+bodyHTML+'</body></html>');
+  w.document.close();
+  setTimeout(function(){ try{ w.focus(); w.print(); }catch(e){} }, 600);
+  toast('Choose “Save as PDF” in the print dialog','ok');
+}
+function downloadXLS(filename, sheetName, headerCells, rows){
+  var xml='<?xml version="1.0"?>\n<?mso-application progid="Excel.Sheet"?>\n'+
+    '<Workbook xmlns="urn:schemas-microsoft-com:office:spreadsheet"'+
+      ' xmlns:o="urn:schemas-microsoft-com:office:office"'+
+      ' xmlns:x="urn:schemas-microsoft-com:office:excel"'+
+      ' xmlns:ss="urn:schemas-microsoft-com:office:spreadsheet">'+
+    '<Worksheet ss:Name="'+xlEsc(sheetName)+'">'+
+      '<Table>'+xlRow(headerCells.map(function(h){ return {v:h}; }))+rows.join('')+'</Table>'+
+    '</Worksheet></Workbook>';
+  var blob=new Blob(['﻿'+xml],{type:'application/vnd.ms-excel'});
+  var a=document.createElement('a');
+  a.href=URL.createObjectURL(blob);
+  a.download=filename.replace(/[\\\/:*?"<>|]/g,'').slice(0,110)+'.xls';
+  document.body.appendChild(a); a.click();
+  setTimeout(function(){ URL.revokeObjectURL(a.href); a.remove(); }, 1500);
+}
+
+function printMonthCalendar(){
+  var monthLabel=calMonthCursor.toLocaleDateString('en-GB',{month:'long',year:'numeric'});
+  var byDate=jobsByDate();
+  var year=calMonthCursor.getFullYear(), month=calMonthCursor.getMonth();
+  var firstDow=new Date(year,month,1).getDay();
+  var daysInMonth=new Date(year,month+1,0).getDate();
+  var gridStart=addDaysD(new Date(year,month,1), -firstDow);
+  var totalCells=Math.ceil((firstDow+daysInMonth)/7)*7;
+
+  var rowsHTML='';
+  for(var w=0; w<totalCells/7; w++){
+    rowsHTML+='<tr>';
+    for(var d=0; d<7; d++){
+      var day=addDaysD(gridStart, w*7+d), iso=toISODate(day);
+      if(day.getMonth()!==month){ rowsHTML+='<td style="background:#f2f2f2"></td>'; continue; }
+      var jobs=byDate[iso]||[];
+      rowsHTML+='<td><b>'+day.getDate()+'</b><br>'+jobs.map(function(j){ return '<div class="sd-job"><b>'+esc(j.project||j.task)+'</b>'+(j.project?esc(j.task):'')+'</div>'; }).join('')+'</td>';
+    }
+    rowsHTML+='</tr>';
+  }
+  var html=scheduleDocHead('Team Calendar — '+monthLabel)+
+    '<table><thead><tr><th>Sun</th><th>Mon</th><th>Tue</th><th>Wed</th><th>Thu</th><th>Fri</th><th>Sat</th></tr></thead><tbody>'+rowsHTML+'</tbody></table>';
+  openPrintWindow('Team Calendar - '+monthLabel, html);
+}
+function exportMonthCalendarExcel(){
+  var monthLabel=calMonthCursor.toLocaleDateString('en-GB',{month:'long',year:'numeric'});
+  var byDate=jobsByDate();
+  var dates=Object.keys(byDate).filter(function(iso){
+    var d=parseISODate(iso); return d.getFullYear()===calMonthCursor.getFullYear() && d.getMonth()===calMonthCursor.getMonth();
+  }).sort();
+  var rows=[];
+  dates.forEach(function(iso){
+    byDate[iso].forEach(function(j){
+      rows.push(xlRow([{v:iso},{v:j.project||''},{v:j.task||''},{v:(j.assignees||[]).join(', ')},{v:j.status||''}]));
+    });
+  });
+  downloadXLS('Team Calendar - '+monthLabel, 'Calendar', ['Date','Project / Site','Job','Team','Status'], rows);
+}
+
+function printWeeklySchedule(){
+  var days=[]; for(var i=0;i<6;i++) days.push(addDaysD(weekCursor,i));
+  var team=teamList(), byDate=jobsByDate();
+  var head='<tr><th>Member</th>'+days.map(function(d){ return '<th>'+d.toLocaleDateString('en-GB',{weekday:'short'})+' '+fmtShortD(d)+'</th>'; }).join('')+'</tr>';
+  var body=team.map(function(m){
+    return '<tr><td><b>'+esc(m.name)+'</b>'+(m.trade?'<br><span style="color:#666">'+esc(m.trade)+'</span>':'')+'</td>'+
+      days.map(function(d){
+        var iso=toISODate(d);
+        var jobs=(byDate[iso]||[]).filter(function(j){ return (j.assignees||[]).indexOf(m.name)>=0; });
+        var abs=getAttendance(iso)[m.name];
+        return '<td>'+jobs.map(function(j){ return '<div class="sd-job">'+(j.project?'<b>'+esc(j.project)+'</b>':'')+esc(j.task)+'</div>'; }).join('')+
+          (abs?'<div class="sd-abs">'+ABSENCE_LABELS[abs]+'</div>':'')+'</td>';
+      }).join('')+
+    '</tr>';
+  }).join('');
+  var label=fmtShortD(days[0])+' – '+fmtShortD(days[5]);
+  var html=scheduleDocHead('Weekly Schedule — '+label)+'<table><thead>'+head+'</thead><tbody>'+body+'</tbody></table>';
+  openPrintWindow('Weekly Schedule - '+label, html);
+}
+function exportWeeklyScheduleExcel(){
+  var days=[]; for(var i=0;i<6;i++) days.push(addDaysD(weekCursor,i));
+  var team=teamList(), byDate=jobsByDate();
+  var rows=team.map(function(m){
+    var cells=[{v:m.name},{v:m.trade||''}];
+    days.forEach(function(d){
+      var iso=toISODate(d);
+      var jobs=(byDate[iso]||[]).filter(function(j){ return (j.assignees||[]).indexOf(m.name)>=0; });
+      var abs=getAttendance(iso)[m.name];
+      var text = jobs.map(function(j){ return (j.project?j.project+' — ':'')+j.task; }).join('; ');
+      if(abs) text = (text?text+' | ':'') + ABSENCE_LABELS[abs];
+      cells.push({v:text});
+    });
+    return xlRow(cells);
+  });
+  var header=['Member','Trade'].concat(days.map(function(d){ return d.toLocaleDateString('en-GB',{weekday:'short'})+' '+fmtShortD(d); }));
+  var label=fmtShortD(days[0])+' – '+fmtShortD(days[5]);
+  downloadXLS('Weekly Schedule - '+label, 'Weekly Schedule', header, rows);
 }
 
 var toastEl = document.getElementById('toast'), toastTimer;
