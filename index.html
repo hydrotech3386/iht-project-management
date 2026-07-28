@@ -302,6 +302,74 @@ button.btn{padding:8px 16px;border:none;border-radius:6px;cursor:pointer;font-si
 @keyframes rot{to{transform:rotate(360deg)}}
 
 /* no anonymous mode: access is always via a signed-in, role-assigned account */
+
+/* ---------- Month calendar (Team Calendar view, from Project Schedule) ---------- */
+.cal-month-toolbar{display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;flex-wrap:wrap;gap:10px}
+.cal-nav{display:flex;align-items:center;gap:10px}
+.cal-nav button{background:#0f3460;border:none;color:#e0e0e0;padding:6px 12px;border-radius:6px;cursor:pointer;font-size:13px}
+.cal-nav button:hover{background:#e94560}
+.cal-nav .month-label{font-size:16px;font-weight:800;color:#fff;min-width:140px;text-align:center}
+.month-grid{background:#16213e;border:1px solid #0f3460;border-radius:12px;overflow:hidden}
+.dow-row{display:grid;grid-template-columns:repeat(7,1fr);background:#0f3460}
+.dow-row div{padding:9px;text-align:center;font-size:11px;font-weight:700;color:#aab4cc;text-transform:uppercase}
+.week-row{display:grid;grid-template-columns:repeat(7,1fr)}
+.day-cell{border-right:1px solid #1e2d4a;border-bottom:1px solid #1e2d4a;min-height:92px;padding:6px 7px;position:relative;cursor:pointer}
+.day-cell:hover{background:#1a2440}
+.day-cell.muted{background:#141b30;color:#555}
+.day-cell.today{box-shadow:inset 0 0 0 1px #e94560}
+.day-num{font-size:12px;font-weight:700;color:#ccd3e0;margin-bottom:4px}
+.day-cell.muted .day-num{color:#3a4260}
+.day-chip{background:#0f3460;color:#4fc3f7;font-size:10px;font-weight:700;border-radius:5px;padding:2px 6px;margin-bottom:3px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.day-chip.delayed{background:#3a1520;color:#ff8fa3}
+.day-chip.done{background:#123a24;color:#5dfc8d}
+.day-more{font-size:10px;color:#7a8bb0;font-weight:600}
+@media (max-width:640px){.day-cell{min-height:64px}.day-chip{font-size:9px}}
+
+/* ---------- Weekly schedule ---------- */
+.week-nav{display:flex;align-items:center;gap:8px}
+.week-nav button{background:#0f3460;border:none;color:#e0e0e0;padding:6px 12px;border-radius:6px;cursor:pointer;font-size:13px}
+.week-nav button:hover{background:#e94560}
+.week-label{font-size:13px;font-weight:600;min-width:170px;text-align:center}
+.cal-wrap{overflow-x:auto;border:1px solid #0f3460;border-radius:8px;background:#16213e;margin-top:14px}
+.cal-table{border-collapse:collapse;width:100%;font-size:12px}
+.cal-table th{background:#0f3460;color:#fff;padding:8px;text-align:center;font-size:12px;min-width:140px}
+.cal-table td{border:1px solid #1a2a4a;vertical-align:top;padding:6px;min-width:140px}
+.cal-member{position:sticky;left:0;background:#16213e;font-weight:700;color:#fff;padding:8px 10px;white-space:nowrap;min-width:120px}
+.cal-chip{background:#0f3460;border-left:3px solid #2980b9;border-radius:4px;padding:4px 6px;font-size:11px;margin-bottom:4px;cursor:pointer}
+.cal-chip:hover{background:#1a3a5c}
+.cal-chip b{display:block;color:#fff;font-size:11px}
+
+.list-panel{display:flex;flex-direction:column;max-height:320px;overflow-y:auto}
+
+/* ---------- Member chips (job team picker) ---------- */
+.member-grid{display:flex;flex-wrap:wrap;gap:6px}
+.member-chip{background:#0f3460;border:1px solid #333;color:#ccc;border-radius:16px;padding:4px 10px;font-size:11px;cursor:pointer;user-select:none;transition:all .15s}
+.member-chip:hover{border-color:#e94560}
+.member-chip.checked{background:#e94560;border-color:#e94560;color:#fff;font-weight:700}
+.member-chip.absent{opacity:.4;cursor:not-allowed;pointer-events:none}
+
+/* ---------- Leave / attendance ---------- */
+.leave-section{margin:14px 0}
+.leave-section > label{display:block;font-size:11px;color:#7a8bb0;margin-bottom:6px;text-transform:uppercase;font-weight:700}
+.leave-row{display:flex;flex-direction:column;gap:6px}
+.leave-chip{display:flex;align-items:center;gap:0;background:#0f3460;border:1px solid #333;border-radius:16px;overflow:hidden;font-size:12px;font-weight:600;width:fit-content}
+.leave-chip:hover{border-color:#888}
+.leave-chip .chip-name{padding:5px 10px;color:#ccc;white-space:nowrap}
+.leave-chip .chip-btn{padding:5px 9px;border:none;background:transparent;color:#666;cursor:pointer;font-size:11px;font-weight:700;border-left:1px solid #333;transition:all .15s;white-space:nowrap}
+.leave-chip .chip-btn:hover{background:#1a2440;color:#fff}
+.leave-chip.leave .chip-name{color:#e67e22}
+.leave-chip.leave{border-color:#e67e22}
+.leave-chip.leave .chip-btn.btn-leave{background:#e67e22;color:#fff}
+.leave-chip.mc .chip-name{color:#9b59b6}
+.leave-chip.mc{border-color:#9b59b6}
+.leave-chip.mc .chip-btn.btn-mc{background:#9b59b6;color:#fff}
+.leave-chip.half .chip-name{color:#1abc9c}
+.leave-chip.half{border-color:#1abc9c}
+.leave-chip.half .chip-btn.btn-half{background:#1abc9c;color:#fff}
+.absence-tag{font-size:9px;font-weight:800;padding:2px 6px;border-radius:8px;text-transform:uppercase;display:inline-block}
+.absence-tag.leave{background:#e67e22;color:#fff}
+.absence-tag.mc{background:#9b59b6;color:#fff}
+.absence-tag.half{background:#1abc9c;color:#fff}
 </style>
 </head>
 <body>
@@ -332,6 +400,8 @@ button.btn{padding:8px 16px;border:none;border-radius:6px;cursor:pointer;font-si
     <div class="logo-sub">Project Management</div>
     <nav class="sidebar-nav" id="navMenu">
       <div class="nav-item active" data-view="dashboard"><span class="nav-ico">▣</span> Dashboard</div>
+      <div class="nav-item" data-view="calendar"><span class="nav-ico">▦</span> Calendar</div>
+      <div class="nav-item" data-view="weekly"><span class="nav-ico">▧</span> Weekly Schedule</div>
       <div class="nav-item" data-view="projects"><span class="nav-ico">◈</span> Projects</div>
       <div class="nav-item" data-view="items"><span class="nav-ico">☑</span> Items</div>
       <div class="nav-item money-only" data-view="claims"><span class="nav-ico">◧</span> Claims</div>
@@ -360,6 +430,8 @@ button.btn{padding:8px 16px;border:none;border-radius:6px;cursor:pointer;font-si
     <div class="local-banner" id="localBanner" style="display:none"></div>
     <div class="view-body">
       <div class="view active" id="view-dashboard"></div>
+      <div class="view" id="view-calendar"></div>
+      <div class="view" id="view-weekly"></div>
       <div class="view" id="view-projects"></div>
       <div class="view" id="view-items"></div>
       <div class="view" id="view-claims"></div>
@@ -417,9 +489,9 @@ if (FB_ENABLED) {
 /* Every user must sign in and be given a role by an admin. There is no
    anonymous or public read-only mode. */
 var LS_KEY = 'iht_pm_v2';
-var COLS = ['projects','items','documents','photos','claims','folders','users','roster','payments'];
+var COLS = ['projects','items','documents','photos','claims','folders','users','roster','payments','team','jobs','attendance'];
 
-var state = { projects:{}, items:{}, documents:{}, photos:{}, claims:{}, folders:{}, users:{}, roster:{}, payments:{} };
+var state = { projects:{}, items:{}, documents:{}, photos:{}, claims:{}, folders:{}, users:{}, roster:{}, payments:{}, team:{}, jobs:{}, attendance:{} };
 var currentUser = null;
 var db = null, storage = null, auth = null, functions = null;
 
@@ -520,6 +592,342 @@ function salesmen(){ return Object.values(state.users).filter(function(u){ retur
    grants any access, since nothing ever signs in with that id. */
 function rosterList(){ return Object.values(state.roster).sort(function(a,b){ return (a.name||'').localeCompare(b.name||''); }); }
 
+/* =====================================================================
+   TEAM CALENDAR / WEEKLY SCHEDULE (migrated from the Project Schedule app)
+   Jobs are intentionally decoupled from Projects — most day-to-day site
+   work has no formal tracked project. A job optionally links to one via
+   projectId; projectLabel is always the display text (either the linked
+   project's real name, or free-typed text for an untracked site/job).
+   ===================================================================== */
+function toISODate(d){ return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0'); }
+function parseISODate(s){ if(!s) return null; var p=s.split('-').map(Number); return new Date(p[0],p[1]-1,p[2]); }
+function addDaysD(d,n){ var r=new Date(d); r.setDate(r.getDate()+n); return r; }
+function mondayOfD(d){ var r=new Date(d); var day=r.getDay(); var diff=day===0?-6:1-day; r.setDate(r.getDate()+diff); r.setHours(0,0,0,0); return r; }
+function startOfMonthD(d){ return new Date(d.getFullYear(), d.getMonth(), 1); }
+function addMonthsD(d,n){ return new Date(d.getFullYear(), d.getMonth()+n, 1); }
+function fmtShortD(d){ return d.toLocaleDateString('en-GB',{day:'2-digit',month:'short'}); }
+
+/* ---------- Team roster (lightweight — no login, just names for job assignment) ---------- */
+function teamList(){ return Object.values(state.team).sort(function(a,b){ return (a.name||'').localeCompare(b.name||''); }); }
+
+/* ---------- Jobs ---------- */
+function jobsForProject(projId){ return Object.values(state.jobs).filter(function(j){ return j.projectId===projId; }); }
+/* a job is visible if it isn't tied to any project, or the linked project
+   passes the same canSeeProject() scoping used everywhere else in the app */
+function visibleJobs(){
+  return Object.values(state.jobs).filter(function(j){
+    if(!j.projectId) return true;
+    var p=state.projects[j.projectId];
+    return p ? canSeeProject(p) : true; // linked project deleted — don't hide the job silently
+  });
+}
+function jobsByDate(){
+  var byDate={};
+  visibleJobs().forEach(function(j){
+    if(!j.start || !j.end) return;
+    var proj = j.projectId ? state.projects[j.projectId] : null;
+    var s=parseISODate(j.start), e=parseISODate(j.end), d=new Date(s);
+    while(d<=e){
+      var iso=toISODate(d);
+      (byDate[iso]=byDate[iso]||[]).push({ jobId:j.id, project:j.projectLabel||(proj?proj.name:''), task:j.name, assignees:j.assignees||[], status:j.status, projStatus:proj?proj.status:'' });
+      d=addDaysD(d,1);
+    }
+  });
+  return byDate;
+}
+
+/* ---------- Attendance: AL / half-day AL / MC, mirrors Service Schedule ---------- */
+var ABSENCE_LABELS = { leave:'AL', half:'½ AL', mc:'MC' };
+function getAttendance(dateISO){ return (state.attendance && state.attendance[dateISO]) || {}; }
+function setAttendance(dateISO, name, type){
+  var day = Object.assign({}, getAttendance(dateISO));
+  if(day[name]===type) delete day[name]; else day[name]=type;
+  state.attendance[dateISO]=day; // optimistic — modal re-renders instantly, not after the round-trip
+  if(FB_ENABLED && db){ db.ref(DB_PREFIX+'attendance/'+dateISO).set(day); } else saveLocal();
+}
+
+/* ---------- Month calendar (home-ish view) ---------- */
+var calMonthCursor = startOfMonthD(new Date());
+function renderCalendarView(){
+  var el=document.getElementById('view-calendar');
+  var projs=Object.values(state.projects).filter(canSeeProject);
+  var todayISO=toISODate(new Date());
+  var byDate=jobsByDate();
+
+  var year=calMonthCursor.getFullYear(), month=calMonthCursor.getMonth();
+  var firstDow=new Date(year,month,1).getDay();
+  var daysInMonth=new Date(year,month+1,0).getDate();
+  var gridStart=addDaysD(new Date(year,month,1), -firstDow);
+  var totalCells=Math.ceil((firstDow+daysInMonth)/7)*7;
+
+  var weeksHTML='';
+  for(var w=0; w<totalCells/7; w++){
+    weeksHTML+='<div class="week-row">';
+    for(var d=0; d<7; d++){
+      var day=addDaysD(gridStart, w*7+d), iso=toISODate(day);
+      var muted = day.getMonth()!==month;
+      var jobs = byDate[iso]||[];
+      var shown = jobs.slice(0,3);
+      weeksHTML+='<div class="day-cell '+(muted?'muted':'')+' '+(iso===todayISO?'today':'')+'" data-day="'+iso+'">'+
+        '<div class="day-num">'+day.getDate()+'</div>'+
+        shown.map(function(j){ return '<div class="day-chip '+(j.projStatus==='delayed'?'delayed':(j.status==='done'?'done':''))+'" title="'+esc(j.task)+'">'+esc(j.project||j.task)+'</div>'; }).join('')+
+        (jobs.length>3? '<div class="day-more">+'+(jobs.length-3)+' more</div>' : '')+
+        '</div>';
+    }
+    weeksHTML+='</div>';
+  }
+
+  var onSite = {}; (byDate[todayISO]||[]).forEach(function(j){ (j.assignees||[]).forEach(function(n){ onSite[n]=1; }); });
+  var weekStart=mondayOfD(new Date()), weekEnd=addDaysD(weekStart,5);
+  var jobsThisWeek = visibleJobs().filter(function(j){
+    if(!j.start||!j.end) return false;
+    var s=parseISODate(j.start), e=parseISODate(j.end);
+    return s<=weekEnd && e>=weekStart;
+  }).length;
+
+  el.innerHTML =
+    '<div class="stat-row">'+
+      statCard(projs.filter(function(p){return p.status!=='completed';}).length,'On-going Projects')+
+      statCard(Object.keys(onSite).length,'Team On Site Today')+
+      statCard(jobsThisWeek,'Jobs This Week')+
+      statCard(projs.filter(function(p){return p.status==='delayed';}).length,'Delayed','alert')+
+    '</div>'+
+    '<div class="cal-month-toolbar">'+
+      '<div class="cal-nav"><button data-cal-prev>‹</button><span class="month-label">'+calMonthCursor.toLocaleDateString('en-GB',{month:'long',year:'numeric'})+'</span><button data-cal-next>›</button><button data-cal-today>This Month</button></div>'+
+      (canOperate()? '<div><button class="btn btn-secondary btn-sm" data-manage-team>Manage Team</button> <button class="btn btn-add btn-sm" data-add-job>+ Add Job</button></div>' : '')+
+    '</div>'+
+    '<div class="month-grid"><div class="dow-row"><div>Sun</div><div>Mon</div><div>Tue</div><div>Wed</div><div>Thu</div><div>Fri</div><div>Sat</div></div>'+weeksHTML+'</div>';
+
+  bindCalendarNav(renderCalendarView, function(c){ calMonthCursor=c; });
+  el.querySelectorAll('[data-day]').forEach(function(cell){ cell.addEventListener('click', function(){ openDayDetailModal(cell.dataset.day); }); });
+  var mt=el.querySelector('[data-manage-team]'); if(mt) mt.addEventListener('click', openTeamModal);
+  var aj=el.querySelector('[data-add-job]'); if(aj) aj.addEventListener('click', function(){ openJobModal(null); });
+}
+function bindCalendarNav(rerender, setCursor){
+  var el=document.querySelector('.view.active');
+  var prev=el.querySelector('[data-cal-prev]'), next=el.querySelector('[data-cal-next]'), today=el.querySelector('[data-cal-today]');
+  if(prev) prev.addEventListener('click', function(){ setCursor(addMonthsD(calMonthCursor,-1)); rerender(); });
+  if(next) next.addEventListener('click', function(){ setCursor(addMonthsD(calMonthCursor,1)); rerender(); });
+  if(today) today.addEventListener('click', function(){ setCursor(startOfMonthD(new Date())); rerender(); });
+}
+
+function openDayDetailModal(iso){
+  var d=parseISODate(iso);
+  var jobs=(jobsByDate()[iso]||[]).sort(function(a,b){ return (a.project||'').localeCompare(b.project||''); });
+  var listHTML = jobs.length ? jobs.map(function(j){
+    return '<div class="list-row" style="cursor:pointer" data-job-edit="'+j.jobId+'">'+
+      '<div style="flex:1;min-width:0"><b>'+esc(j.task)+'</b><div style="font-size:11px;color:#7a8bb0">'+(j.project?esc(j.project)+' · ':'')+(j.assignees.length?esc(j.assignees.join(', ')):'unassigned')+'</div></div>'+
+      '<span class="status-badge '+(j.status==='done'?'status-completed':(j.status==='in-progress'?'status-in-progress':'status-planning'))+'">'+esc(j.status)+'</span>'+
+    '</div>';
+  }).join('') : '<div class="empty-state" style="padding:20px 0">No jobs scheduled this day.</div>';
+
+  var leaveHTML = buildLeaveRowHTML(iso);
+
+  openModal(
+    '<div class="modal-head"><h2>Jobs — '+d.toLocaleDateString('en-GB',{weekday:'long',day:'2-digit',month:'short',year:'numeric'})+'</h2><button class="modal-close" data-close>&times;</button></div>'+
+    '<div class="list-panel">'+listHTML+'</div>'+
+    (canOperate() ? '<div class="leave-section"><label>Absent this day</label><div class="leave-row" id="dayLeaveRow">'+leaveHTML+'</div></div>' : '')+
+    '<div class="modal-foot">'+
+      (canOperate()? '<button class="btn btn-add" data-add-job-day="'+iso+'">+ Add Job</button>' : '')+
+      '<button class="btn btn-secondary" data-close>Close</button>'+
+    '</div>'
+  );
+  bindClose();
+  modalBox.querySelectorAll('[data-job-edit]').forEach(function(row){ row.addEventListener('click', function(){ closeModal(); openJobModal(row.dataset.jobEdit); }); });
+  var addBtn=modalBox.querySelector('[data-add-job-day]'); if(addBtn) addBtn.addEventListener('click', function(){ closeModal(); openJobModal(null, iso); });
+  bindLeaveRow(iso);
+}
+function buildLeaveRowHTML(iso){
+  var att=getAttendance(iso);
+  return teamList().map(function(m){
+    var status=att[m.name]||'';
+    return '<div class="leave-chip '+status+'"><span class="chip-name">'+esc(m.name)+'</span>'+
+      '<button class="chip-btn btn-leave" data-leave="'+esc(m.name)+'" data-type="leave" title="Mark AL">AL</button>'+
+      '<button class="chip-btn btn-half" data-leave="'+esc(m.name)+'" data-type="half" title="Mark AL Half Day">½AL</button>'+
+      '<button class="chip-btn btn-mc" data-leave="'+esc(m.name)+'" data-type="mc" title="Mark MC">MC</button>'+
+    '</div>';
+  }).join('');
+}
+function bindLeaveRow(iso){
+  var row=document.getElementById('dayLeaveRow');
+  if(!row) return;
+  row.querySelectorAll('[data-leave]').forEach(function(b){ b.addEventListener('click', function(){
+    setAttendance(iso, b.dataset.leave, b.dataset.type);
+    row.innerHTML = buildLeaveRowHTML(iso);
+    bindLeaveRow(iso);
+  }); });
+}
+
+/* ---------- Weekly schedule ---------- */
+var weekCursor = mondayOfD(new Date());
+function renderWeeklyView(){
+  var el=document.getElementById('view-weekly');
+  var days=[]; for(var i=0;i<6;i++) days.push(addDaysD(weekCursor,i)); // Mon-Sat
+  var team=teamList();
+  var byDate=jobsByDate();
+
+  var toolbarHTML =
+    '<div class="cal-month-toolbar">'+
+      '<div class="week-nav"><button data-week-prev>◀ Prev</button><span class="week-label">'+fmtShortD(days[0])+' – '+fmtShortD(days[5])+'</span><button data-week-next>Next ▶</button><button data-week-today>This Week</button></div>'+
+      (canOperate()? '<div><button class="btn btn-secondary btn-sm" data-manage-team>Manage Team</button> <button class="btn btn-add btn-sm" data-add-job>+ Add Job</button></div>' : '')+
+    '</div>';
+
+  if(!team.length){
+    el.innerHTML = toolbarHTML + '<div class="empty-state">No team members yet.'+(canOperate()?' Click "Manage Team" to add your field crew.':'')+'</div>';
+  } else {
+    var assign={};
+    visibleJobs().forEach(function(j){
+      if(!j.assignees || !j.assignees.length || !j.start || !j.end) return;
+      var proj=j.projectId?state.projects[j.projectId]:null;
+      var s=parseISODate(j.start), e=parseISODate(j.end);
+      days.forEach(function(d){
+        if(d>=s && d<=e){
+          var iso=toISODate(d);
+          j.assignees.forEach(function(name){
+            assign[name]=assign[name]||{}; assign[name][iso]=assign[name][iso]||[];
+            assign[name][iso].push({ project:j.projectLabel||(proj?proj.name:''), task:j.name, status:j.status==='done'?'completed':(j.status==='in-progress'?'in-progress':'planning'), jobId:j.id });
+          });
+        }
+      });
+    });
+
+    var tableHTML = '<thead><tr><th class="cal-member" style="position:sticky;top:0;background:#0f3460">Member</th>'+
+      days.map(function(d){ return '<th>'+d.toLocaleDateString('en-GB',{weekday:'short'})+'<br>'+fmtShortD(d)+'</th>'; }).join('')+
+      '</tr></thead><tbody>'+
+      team.map(function(m){
+        var rowHTML='<tr><td class="cal-member">'+esc(m.name)+'<div style="font-weight:400;color:#7a8bb0;font-size:10px">'+esc(m.trade||'')+'</div></td>';
+        days.forEach(function(d){
+          var iso=toISODate(d);
+          var items=(assign[m.name]&&assign[m.name][iso])||[];
+          var absStatus=getAttendance(iso)[m.name];
+          var chips=items.map(function(it){ return '<div class="cal-chip status-'+it.status+'" data-job-edit="'+it.jobId+'">'+(it.project?'<b>'+esc(it.project)+'</b>':'')+esc(it.task)+'</div>'; }).join('');
+          rowHTML+='<td>'+chips+(absStatus?'<span class="absence-tag '+absStatus+'">'+ABSENCE_LABELS[absStatus]+'</span>':'')+'</td>';
+        });
+        return rowHTML+'</tr>';
+      }).join('')+'</tbody>';
+
+    el.innerHTML = toolbarHTML + '<div class="cal-wrap"><table class="cal-table">'+tableHTML+'</table></div>';
+    el.querySelectorAll('[data-job-edit]').forEach(function(chip){ chip.addEventListener('click', function(){ openJobModal(chip.dataset.jobEdit); }); });
+  }
+
+  el.querySelector('[data-week-prev]').addEventListener('click', function(){ weekCursor=addDaysD(weekCursor,-7); renderWeeklyView(); });
+  el.querySelector('[data-week-next]').addEventListener('click', function(){ weekCursor=addDaysD(weekCursor,7); renderWeeklyView(); });
+  el.querySelector('[data-week-today]').addEventListener('click', function(){ weekCursor=mondayOfD(new Date()); renderWeeklyView(); });
+  var mt=el.querySelector('[data-manage-team]'); if(mt) mt.addEventListener('click', openTeamModal);
+  var aj=el.querySelector('[data-add-job]'); if(aj) aj.addEventListener('click', function(){ openJobModal(null); });
+}
+
+/* ---------- Job modal (add/edit) ---------- */
+var jobSelectedAssignees=[];
+function openJobModal(jobId, dateHint){
+  var job = jobId ? state.jobs[jobId] : null;
+  var projOptions = Object.values(state.projects).filter(canSeeProject).sort(function(a,b){ return (a.name||'').localeCompare(b.name||''); });
+  jobSelectedAssignees = job ? (job.assignees||[]).slice() : [];
+  var dateVal = job ? job.start : (dateHint || todayISO());
+
+  openModal(
+    '<div class="modal-head"><h2>'+(job?'Edit Job':'Add Job')+'</h2><button class="modal-close" data-close>&times;</button></div>'+
+    '<div class="field"><label>Project (optional — pick one or type a site name)</label>'+
+      '<input type="text" id="jobProjectInput" list="jobProjectDatalist" value="'+esc(job?job.projectLabel||'':'')+'" placeholder="e.g. an existing project — or just type a site">'+
+      '<datalist id="jobProjectDatalist">'+projOptions.map(function(p){ return '<option value="'+esc(p.name)+'">'; }).join('')+'</datalist>'+
+    '</div>'+
+    field("What's the job?", 'jobName', job?job.name:'', 'text', true, true)+
+    field('Date', 'jobDate', dateVal, 'date', true)+
+    '<div class="field"><label>Team</label><div class="member-grid" id="jobMemberGrid"></div></div>'+
+    '<div class="modal-foot">'+
+      (job? '<button class="btn btn-danger" id="jobDeleteBtn" style="margin-right:auto">Delete</button>' : '')+
+      '<button class="btn btn-secondary" data-close>Cancel</button>'+
+      '<button class="btn btn-primary" id="jobSaveBtn">Save Job</button>'+
+    '</div>'
+  );
+  bindClose();
+  renderJobMemberGrid();
+  document.getElementById('jobDate').addEventListener('change', renderJobMemberGrid);
+  document.getElementById('jobSaveBtn').addEventListener('click', function(){ saveJob(jobId); });
+  var delBtn=document.getElementById('jobDeleteBtn');
+  if(delBtn) delBtn.addEventListener('click', function(){
+    if(!confirm('Remove this job entry?')) return;
+    remove('jobs', jobId); closeModal(); toast('Job removed','ok'); renderCurrent();
+  });
+}
+function renderJobMemberGrid(){
+  var grid=document.getElementById('jobMemberGrid');
+  var team=teamList();
+  if(!team.length){ grid.innerHTML='<span style="color:#666;font-size:11px">No team members yet — use "Manage Team" to add your field crew</span>'; return; }
+  var dateVal=document.getElementById('jobDate').value;
+  var dayAtt=getAttendance(dateVal);
+  grid.innerHTML=team.map(function(m){
+    var absent=!!dayAtt[m.name], checked=jobSelectedAssignees.indexOf(m.name)>=0;
+    return '<span class="member-chip '+(checked?'checked':'')+' '+(absent&&!checked?'absent':'')+'" data-toggle-assignee="'+esc(m.name)+'" title="'+(absent?ABSENCE_LABELS[dayAtt[m.name]]:'')+'">'+esc(m.name)+(absent?' · '+ABSENCE_LABELS[dayAtt[m.name]]:'')+'</span>';
+  }).join('');
+  grid.querySelectorAll('[data-toggle-assignee]').forEach(function(chip){
+    chip.addEventListener('click', function(){
+      if(chip.classList.contains('absent') && !chip.classList.contains('checked')) return;
+      var name=chip.dataset.toggleAssignee, i=jobSelectedAssignees.indexOf(name);
+      if(i===-1) jobSelectedAssignees.push(name); else jobSelectedAssignees.splice(i,1);
+      renderJobMemberGrid();
+    });
+  });
+}
+function saveJob(existingId){
+  var projectLabelRaw=val('jobProjectInput').trim();
+  var name=val('jobName').trim();
+  var date=val('jobDate');
+  if(!name){ toast("Please describe what the job is",'err'); return; }
+  if(!date){ toast('Please choose a date','err'); return; }
+
+  var projectId='', projectLabel=projectLabelRaw;
+  if(projectLabelRaw){
+    var match=Object.values(state.projects).filter(canSeeProject).find(function(p){ return (p.name||'').toLowerCase()===projectLabelRaw.toLowerCase(); });
+    if(match){ projectId=match.id; projectLabel=match.name; }
+  }
+  var status = date<=todayISO() ? 'done' : 'pending';
+  var existing = existingId ? state.jobs[existingId] : null;
+  put('jobs', {
+    id: existingId || uid(), projectId:projectId, projectLabel:projectLabel, name:name,
+    assignees: jobSelectedAssignees.slice(), start:date, end:date, status:status,
+    createdAt: existing?existing.createdAt:Date.now(),
+    createdBy: existing?existing.createdBy:(currentUser?(currentUser.name||currentUser.email):'')
+  });
+  closeModal(); toast('Job saved','ok'); renderCurrent();
+}
+
+/* ---------- Manage Team modal ---------- */
+function openTeamModal(){
+  var team=teamList();
+  openModal(
+    '<div class="modal-head"><h2>Manage Team</h2><button class="modal-close" data-close>&times;</button></div>'+
+    '<div style="font-size:12px;color:#7a8bb0;margin-bottom:12px">Field crew for job assignment — no login, just names used on the Calendar and Weekly Schedule.</div>'+
+    (team.length? '<table class="item-table"><thead><tr><th>Name</th><th>Trade</th><th style="width:50px"></th></tr></thead><tbody>'+
+      team.map(function(m){
+        return '<tr><td><input type="text" class="name-input" value="'+esc(m.name)+'" data-team-name="'+m.id+'"></td>'+
+          '<td><input type="text" class="name-input" value="'+esc(m.trade||'')+'" placeholder="e.g. Electrical" data-team-trade="'+m.id+'"></td>'+
+          '<td><button class="btn btn-danger btn-sm" data-team-del="'+m.id+'">×</button></td></tr>';
+      }).join('')+'</tbody></table>' : '<div class="empty-state" style="padding:16px 0">No team members yet.</div>')+
+    '<button class="btn btn-add btn-sm" id="teamAddBtn" style="margin-top:10px">+ Add Team Member</button>'+
+    '<div class="modal-foot"><button class="btn btn-secondary" data-close>Close</button></div>'
+  );
+  bindClose();
+  modalBox.querySelectorAll('[data-team-name]').forEach(function(inp){ inp.addEventListener('change', function(){
+    var m=state.team[inp.dataset.teamName]; if(!m) return;
+    var n=inp.value.trim(); if(!n){ toast('Name cannot be empty','err'); inp.value=m.name; return; }
+    put('team', Object.assign({}, m, {name:n})); toast('Updated','ok'); renderCurrent();
+  }); });
+  modalBox.querySelectorAll('[data-team-trade]').forEach(function(inp){ inp.addEventListener('change', function(){
+    var m=state.team[inp.dataset.teamTrade]; if(!m) return;
+    put('team', Object.assign({}, m, {trade:inp.value.trim()}));
+  }); });
+  modalBox.querySelectorAll('[data-team-del]').forEach(function(b){ b.addEventListener('click', function(){
+    var m=state.team[b.dataset.teamDel]; if(!m) return;
+    if(!confirm('Remove "'+m.name+'" from the team? Existing job assignments keep the name as text.')) return;
+    remove('team', m.id); toast('Removed','ok'); openTeamModal(); renderCurrent();
+  }); });
+  var addBtn=document.getElementById('teamAddBtn'); if(addBtn) addBtn.addEventListener('click', function(){
+    var name=prompt('Name of the team member to add:'); name=(name||'').trim(); if(!name) return;
+    put('team', {id:uid(), name:name, trade:'', createdAt:Date.now()}); toast('Added '+name,'ok'); openTeamModal(); renderCurrent();
+  });
+}
+
 var toastEl = document.getElementById('toast'), toastTimer;
 function toast(msg, kind, sticky){
   toastEl.innerHTML = msg; toastEl.className = 'toast show' + (kind?(' '+kind):'');
@@ -552,7 +960,7 @@ function subscribeFirebase(){
 
 /* ---------- navigation ---------- */
 var currentView = 'dashboard';
-var VIEW_TITLES = { dashboard:'Dashboard', projects:'Projects', items:'Items', claims:'Progress Claims', documents:'Documents', users:'Users' };
+var VIEW_TITLES = { dashboard:'Dashboard', calendar:'Team Calendar', weekly:'Weekly Schedule', projects:'Projects', items:'Items', claims:'Progress Claims', documents:'Documents', users:'Users' };
 function switchView(v){
   currentView=v;
   document.querySelectorAll('.nav-item').forEach(function(n){ n.classList.toggle('active', n.dataset.view===v); });
@@ -561,7 +969,7 @@ function switchView(v){
   closeSidebar(); renderCurrent();
 }
 function renderCurrent(){
-  var r = { dashboard:renderDashboard, projects:renderProjects, items:renderItemsView, claims:renderClaims, documents:renderDocuments, users:renderUsers }[currentView];
+  var r = { dashboard:renderDashboard, calendar:renderCalendarView, weekly:renderWeeklyView, projects:renderProjects, items:renderItemsView, claims:renderClaims, documents:renderDocuments, users:renderUsers }[currentView];
   if(r) r();
 }
 document.getElementById('navMenu').addEventListener('click', function(e){ var i=e.target.closest('.nav-item'); if(i) switchView(i.dataset.view); });
