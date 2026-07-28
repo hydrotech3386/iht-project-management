@@ -973,14 +973,40 @@ function openPrintWindow(title, bodyHTML){
   setTimeout(function(){ try{ w.focus(); w.print(); }catch(e){} }, 600);
   toast('Choose “Save as PDF” in the print dialog','ok');
 }
-function downloadXLS(filename, sheetName, headerCells, rows){
+/* minimal, reusable style set for schedule exports — bold navy header row,
+   bordered/wrapped body cells, shaded subtotal/total rows — independent of
+   XL_STYLES above (that one's built for the Claims layout specifically) */
+var XL_SCHED_STYLES =
+ '<Style ss:ID="schHdr"><Font ss:Bold="1" ss:Color="#FFFFFF" ss:Size="10"/><Interior ss:Color="#16213E" ss:Pattern="Solid"/>'+
+   '<Alignment ss:Vertical="Center" ss:Horizontal="Center" ss:WrapText="1"/>'+
+   '<Borders><Border ss:Position="Bottom" ss:LineStyle="Continuous" ss:Weight="1"/><Border ss:Position="Top" ss:LineStyle="Continuous" ss:Weight="1"/>'+
+   '<Border ss:Position="Left" ss:LineStyle="Continuous" ss:Weight="1"/><Border ss:Position="Right" ss:LineStyle="Continuous" ss:Weight="1"/></Borders></Style>'+
+ '<Style ss:ID="schCell"><Font ss:Size="10"/><Alignment ss:Vertical="Top" ss:WrapText="1"/>'+
+   '<Borders><Border ss:Position="Bottom" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#C0C0C0"/><Border ss:Position="Top" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#C0C0C0"/>'+
+   '<Border ss:Position="Left" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#C0C0C0"/><Border ss:Position="Right" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#C0C0C0"/></Borders></Style>'+
+ '<Style ss:ID="schNum"><Font ss:Size="10"/><Alignment ss:Vertical="Top" ss:Horizontal="Right"/>'+
+   '<Borders><Border ss:Position="Bottom" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#C0C0C0"/><Border ss:Position="Top" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#C0C0C0"/>'+
+   '<Border ss:Position="Left" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#C0C0C0"/><Border ss:Position="Right" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#C0C0C0"/></Borders></Style>'+
+ '<Style ss:ID="schGroup"><Font ss:Bold="1" ss:Size="12" ss:Color="#16213E"/></Style>'+
+ '<Style ss:ID="schTot"><Font ss:Bold="1" ss:Size="10"/><Interior ss:Color="#E6E9F0" ss:Pattern="Solid"/><Alignment ss:Horizontal="Right"/>'+
+   '<Borders><Border ss:Position="Bottom" ss:LineStyle="Continuous" ss:Weight="1"/><Border ss:Position="Top" ss:LineStyle="Continuous" ss:Weight="1"/></Borders></Style>'+
+ '<Style ss:ID="schGrand"><Font ss:Bold="1" ss:Size="11" ss:Color="#FFFFFF"/><Interior ss:Color="#16213E" ss:Pattern="Solid"/><Alignment ss:Horizontal="Right"/></Style>';
+
+/* rowsXML: pre-built <Row>...</Row> strings (caller controls header/group/total rows and styling) */
+function downloadXLS(filename, sheetName, colWidths, rowsXML){
+  var cols=(colWidths||[]).map(function(w){ return '<Column ss:Width="'+w+'"/>'; }).join('');
   var xml='<?xml version="1.0"?>\n<?mso-application progid="Excel.Sheet"?>\n'+
     '<Workbook xmlns="urn:schemas-microsoft-com:office:spreadsheet"'+
       ' xmlns:o="urn:schemas-microsoft-com:office:office"'+
       ' xmlns:x="urn:schemas-microsoft-com:office:excel"'+
       ' xmlns:ss="urn:schemas-microsoft-com:office:spreadsheet">'+
+    '<Styles>'+XL_SCHED_STYLES+'</Styles>'+
     '<Worksheet ss:Name="'+xlEsc(sheetName)+'">'+
-      '<Table>'+xlRow(headerCells.map(function(h){ return {v:h}; }))+rows.join('')+'</Table>'+
+      '<Table ss:DefaultColumnWidth="90" ss:DefaultRowHeight="16">'+cols+rowsXML.join('')+'</Table>'+
+      '<WorksheetOptions xmlns="urn:schemas-microsoft-com:office:excel">'+
+        '<PageSetup><Layout x:Orientation="Landscape"/><PageMargins x:Bottom="0.5" x:Left="0.4" x:Right="0.4" x:Top="0.5"/></PageSetup>'+
+        '<FitToPage/><Print><FitWidth>1</FitWidth><FitHeight>0</FitHeight><PaperSizeIndex>9</PaperSizeIndex></Print>'+
+      '</WorksheetOptions>'+
     '</Worksheet></Workbook>';
   var blob=new Blob(['﻿'+xml],{type:'application/vnd.ms-excel'});
   var a=document.createElement('a');
@@ -990,43 +1016,63 @@ function downloadXLS(filename, sheetName, headerCells, rows){
   setTimeout(function(){ URL.revokeObjectURL(a.href); a.remove(); }, 1500);
 }
 
-function printMonthCalendar(){
-  var monthLabel=calMonthCursor.toLocaleDateString('en-GB',{month:'long',year:'numeric'});
-  var byDate=jobsByDate();
-  var year=calMonthCursor.getFullYear(), month=calMonthCursor.getMonth();
-  var firstDow=new Date(year,month,1).getDay();
-  var daysInMonth=new Date(year,month+1,0).getDate();
-  var gridStart=addDaysD(new Date(year,month,1), -firstDow);
-  var totalCells=Math.ceil((firstDow+daysInMonth)/7)*7;
-
-  var rowsHTML='';
-  for(var w=0; w<totalCells/7; w++){
-    rowsHTML+='<tr>';
-    for(var d=0; d<7; d++){
-      var day=addDaysD(gridStart, w*7+d), iso=toISODate(day);
-      if(day.getMonth()!==month){ rowsHTML+='<td style="background:#f2f2f2"></td>'; continue; }
-      var jobs=byDate[iso]||[];
-      rowsHTML+='<td><b>'+day.getDate()+'</b><br>'+jobs.map(function(j){ return '<div class="sd-job"><b>'+esc(j.project||j.task)+'</b>'+(j.project?esc(j.task):'')+'</div>'; }).join('')+'</td>';
-    }
-    rowsHTML+='</tr>';
-  }
-  var html=scheduleDocHead('Team Calendar — '+monthLabel)+
-    '<table><thead><tr><th>Sun</th><th>Mon</th><th>Tue</th><th>Wed</th><th>Thu</th><th>Fri</th><th>Sat</th></tr></thead><tbody>'+rowsHTML+'</tbody></table>';
-  openPrintWindow('Team Calendar - '+monthLabel, html);
-}
-function exportMonthCalendarExcel(){
-  var monthLabel=calMonthCursor.toLocaleDateString('en-GB',{month:'long',year:'numeric'});
+/* Chronological work-done report, grouped by project/site — every visible job in
+   the currently viewed month, oldest first within each group, worker count per
+   job, man-days = sum of worker counts (a multi-day job counts once per day it
+   spans, via jobsByDate's date expansion, so man-days stays correct even then). */
+function monthWorkReport(){
   var byDate=jobsByDate();
   var dates=Object.keys(byDate).filter(function(iso){
     var d=parseISODate(iso); return d.getFullYear()===calMonthCursor.getFullYear() && d.getMonth()===calMonthCursor.getMonth();
   }).sort();
-  var rows=[];
+  var groups={}, order=[];
   dates.forEach(function(iso){
     byDate[iso].forEach(function(j){
-      rows.push(xlRow([{v:iso},{v:j.project||''},{v:j.task||''},{v:(j.assignees||[]).join(', ')},{v:j.status||''}]));
+      var label=j.project||'(No Project / Site)';
+      if(!groups[label]){ groups[label]={rows:[],manDays:0}; order.push(label); }
+      var n=(j.assignees||[]).length;
+      groups[label].rows.push({date:iso, job:j.task, workers:n});
+      groups[label].manDays += n;
     });
   });
-  downloadXLS('Team Calendar - '+monthLabel, 'Calendar', ['Date','Project / Site','Job','Team','Status'], rows);
+  order.sort(function(a,b){
+    if(a==='(No Project / Site)') return 1;
+    if(b==='(No Project / Site)') return -1;
+    return a.localeCompare(b);
+  });
+  return {order:order, groups:groups};
+}
+
+function printMonthCalendar(){
+  var monthLabel=calMonthCursor.toLocaleDateString('en-GB',{month:'long',year:'numeric'});
+  var data=monthWorkReport();
+  var grandTotal=0;
+  var sections=data.order.map(function(label){
+    var g=data.groups[label]; grandTotal+=g.manDays;
+    return '<h3 style="font-size:12px;color:#16213e;margin:14px 0 4px">'+esc(label)+'</h3>'+
+      '<table><thead><tr><th style="width:90px">Date</th><th>Job</th><th style="width:70px" class="num-col">Workers</th></tr></thead><tbody>'+
+      g.rows.map(function(r){ return '<tr><td>'+fmtDate(r.date)+'</td><td>'+esc(r.job)+'</td><td class="num-col">'+r.workers+'</td></tr>'; }).join('')+
+      '</tbody><tfoot><tr><td colspan="2">Total Man-Days</td><td class="num-col">'+g.manDays+'</td></tr></tfoot></table>';
+  }).join('');
+  var html=scheduleDocHead('Team Calendar — '+monthLabel)+
+    sections+
+    '<div style="margin-top:14px;font-size:12px;font-weight:bold;text-align:right">GRAND TOTAL MAN-DAYS: '+grandTotal+'</div>';
+  openPrintWindow('Team Calendar - '+monthLabel, html);
+}
+function exportMonthCalendarExcel(){
+  var monthLabel=calMonthCursor.toLocaleDateString('en-GB',{month:'long',year:'numeric'});
+  var data=monthWorkReport();
+  var rows=[], grandTotal=0;
+  data.order.forEach(function(label){
+    var g=data.groups[label]; grandTotal+=g.manDays;
+    rows.push(xlRow([{v:label,s:'schGroup',m:2}], 20));
+    rows.push(xlRow([{v:'Date',s:'schHdr'},{v:'Job',s:'schHdr'},{v:'Workers',s:'schHdr'}]));
+    g.rows.forEach(function(r){ rows.push(xlRow([{v:r.date,s:'schCell'},{v:r.job,s:'schCell'},{v:r.workers,s:'schNum'}])); });
+    rows.push(xlRow([{v:'Total Man-Days',s:'schTot',m:1},{v:g.manDays,s:'schTot'}]));
+    rows.push(xlRow([{v:''}])); // spacer
+  });
+  rows.push(xlRow([{v:'GRAND TOTAL MAN-DAYS',s:'schGrand',m:1},{v:grandTotal,s:'schGrand'}]));
+  downloadXLS('Team Calendar - '+monthLabel, 'Calendar', [90,340,70], rows);
 }
 
 function printWeeklySchedule(){
@@ -1051,21 +1097,22 @@ function printWeeklySchedule(){
 function exportWeeklyScheduleExcel(){
   var days=[]; for(var i=0;i<6;i++) days.push(addDaysD(weekCursor,i));
   var team=teamList(), byDate=jobsByDate();
+  var header=xlRow(['Member','Trade'].concat(days.map(function(d){ return d.toLocaleDateString('en-GB',{weekday:'short'})+' '+fmtShortD(d); })).map(function(h){ return {v:h,s:'schHdr'}; }));
   var rows=team.map(function(m){
-    var cells=[{v:m.name},{v:m.trade||''}];
+    var cells=[{v:m.name,s:'schCell'},{v:m.trade||'',s:'schCell'}];
     days.forEach(function(d){
       var iso=toISODate(d);
       var jobs=(byDate[iso]||[]).filter(function(j){ return (j.assignees||[]).indexOf(m.name)>=0; });
       var abs=getAttendance(iso)[m.name];
       var text = jobs.map(function(j){ return (j.project?j.project+' — ':'')+j.task; }).join('; ');
       if(abs) text = (text?text+' | ':'') + ABSENCE_LABELS[abs];
-      cells.push({v:text});
+      cells.push({v:text,s:'schCell'});
     });
     return xlRow(cells);
   });
-  var header=['Member','Trade'].concat(days.map(function(d){ return d.toLocaleDateString('en-GB',{weekday:'short'})+' '+fmtShortD(d); }));
   var label=fmtShortD(days[0])+' – '+fmtShortD(days[5]);
-  downloadXLS('Weekly Schedule - '+label, 'Weekly Schedule', header, rows);
+  var widths=[110,90].concat(days.map(function(){ return 150; }));
+  downloadXLS('Weekly Schedule - '+label, 'Weekly Schedule', widths, [header].concat(rows));
 }
 
 var toastEl = document.getElementById('toast'), toastTimer;
