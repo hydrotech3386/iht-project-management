@@ -993,6 +993,7 @@ var SCHEDULE_PRINT_CSS =
  'th{background:#e6e9f0;font-weight:bold;text-align:left}'+
  '.sd-job{margin-bottom:3px}'+
  '.sd-job b{display:block}'+
+ '.sd-team{color:#444}'+
  '.sd-abs{font-weight:bold}';
 function scheduleDocHead(title){
   var logo=document.querySelector('.sidebar .logo-img');
@@ -1067,7 +1068,8 @@ function printMonthCalendar(){
       var day=addDaysD(gridStart, w*7+d), iso=toISODate(day);
       if(day.getMonth()!==month){ rowsHTML+='<td style="background:#f2f2f2"></td>'; continue; }
       var jobs=byDate[iso]||[];
-      rowsHTML+='<td><b>'+day.getDate()+'</b><br>'+jobs.map(function(j){ return '<div class="sd-job"><b>'+esc(j.project||j.task)+'</b>'+(j.project?esc(j.task):'')+'</div>'; }).join('')+'</td>';
+      rowsHTML+='<td><b>'+day.getDate()+'</b><br>'+jobs.map(function(j){ return '<div class="sd-job"><b>'+esc(j.project||j.task)+'</b>'+(j.project?esc(j.task):'')+
+        (j.assignees&&j.assignees.length?'<div class="sd-team">'+esc(j.assignees.join(', '))+'</div>':'')+'</div>'; }).join('')+'</td>';
     }
     rowsHTML+='</tr>';
   }
