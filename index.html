@@ -317,6 +317,7 @@ button.btn{padding:8px 16px;border:none;border-radius:6px;cursor:pointer;font-si
 .day-cell:hover{background:#1a2440}
 .day-cell.muted{background:#141b30;color:#555}
 .day-cell.today{box-shadow:inset 0 0 0 1px #e94560}
+.search-miss{opacity:.35}
 .day-num{font-size:12px;font-weight:700;color:#ccd3e0;margin-bottom:4px}
 .day-cell.muted .day-num{color:#3a4260}
 .day-chip{background:#0f3460;color:#4fc3f7;font-size:10px;font-weight:700;border-radius:5px;padding:2px 6px;margin-bottom:3px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
@@ -650,10 +651,44 @@ function setAttendance(dateISO, name, type){
 
 /* ---------- Month calendar (home-ish view) ---------- */
 var calMonthCursor = startOfMonthD(new Date());
+var calSearchQuery = '';
+/* job entries from jobsByDate()/the weekly assign map share the same
+   {task,project,assignees} shape — one matcher for both search boxes */
+function jobEntryMatches(j, q){
+  if(!q) return true;
+  return ((j.task||'')+' '+(j.project||'')+' '+((j.assignees||[]).join(' '))).toLowerCase().includes(q);
+}
 function renderCalendarView(){
   var el=document.getElementById('view-calendar');
+  el.innerHTML =
+    '<div class="cal-month-toolbar">'+
+      '<div class="cal-nav"><button data-cal-prev>‹</button><span class="month-label">'+calMonthCursor.toLocaleDateString('en-GB',{month:'long',year:'numeric'})+'</span><button data-cal-next>›</button><button data-cal-today>This Month</button></div>'+
+      '<div>'+
+        '<input type="search" id="calSearch" placeholder="Search jobs…" value="'+esc(calSearchQuery)+'"> '+
+        '<button class="btn btn-secondary btn-sm" data-export-pdf>Export PDF</button> '+
+        '<button class="btn btn-secondary btn-sm" data-export-xls>Export Excel</button> '+
+        (canOperate()? '<button class="btn btn-secondary btn-sm" data-mark-attendance>Mark Attendance</button> <button class="btn btn-secondary btn-sm" data-manage-team>Manage Team</button> <button class="btn btn-add btn-sm" data-add-job>+ Add Job</button>' : '')+
+      '</div>'+
+    '</div>'+
+    '<div class="month-grid" id="calGrid"></div>';
+
+  bindCalendarNav(renderCalendarView, function(c){ calMonthCursor=c; });
+  document.getElementById('calSearch').addEventListener('input', function(){ calSearchQuery=this.value; renderCalendarGrid(); });
+  var mt=el.querySelector('[data-manage-team]'); if(mt) mt.addEventListener('click', openTeamModal);
+  var aj=el.querySelector('[data-add-job]'); if(aj) aj.addEventListener('click', function(){ openJobModal(null); });
+  var ma=el.querySelector('[data-mark-attendance]'); if(ma) ma.addEventListener('click', function(){ openAttendanceModal(); });
+  el.querySelector('[data-export-pdf]').addEventListener('click', printMonthCalendar);
+  el.querySelector('[data-export-xls]').addEventListener('click', exportMonthCalendarExcel);
+  renderCalendarGrid();
+}
+/* separate from renderCalendarView() so typing in the search box only
+   rebuilds the grid, not the toolbar — otherwise the search input would
+   lose focus/cursor position on every keystroke */
+function renderCalendarGrid(){
+  var grid=document.getElementById('calGrid'); if(!grid) return;
   var todayISO=toISODate(new Date());
   var byDate=jobsByDate();
+  var q=calSearchQuery.trim().toLowerCase();
 
   var year=calMonthCursor.getFullYear(), month=calMonthCursor.getMonth();
   var firstDow=new Date(year,month,1).getDay();
@@ -661,15 +696,16 @@ function renderCalendarView(){
   var gridStart=addDaysD(new Date(year,month,1), -firstDow);
   var totalCells=Math.ceil((firstDow+daysInMonth)/7)*7;
 
-  var weeksHTML='';
+  var weeksHTML='<div class="dow-row"><div>Sun</div><div>Mon</div><div>Tue</div><div>Wed</div><div>Thu</div><div>Fri</div><div>Sat</div></div>';
   for(var w=0; w<totalCells/7; w++){
     weeksHTML+='<div class="week-row">';
     for(var d=0; d<7; d++){
       var day=addDaysD(gridStart, w*7+d), iso=toISODate(day);
       var muted = day.getMonth()!==month;
-      var jobs = byDate[iso]||[];
+      var allJobs = byDate[iso]||[];
+      var jobs = q ? allJobs.filter(function(j){ return jobEntryMatches(j,q); }) : allJobs;
       var shown = jobs.slice(0,3);
-      weeksHTML+='<div class="day-cell '+(muted?'muted':'')+' '+(iso===todayISO?'today':'')+'" data-day="'+iso+'">'+
+      weeksHTML+='<div class="day-cell '+(muted?'muted':'')+' '+(iso===todayISO?'today':'')+(q&&allJobs.length&&!jobs.length?' search-miss':'')+'" data-day="'+iso+'">'+
         '<div class="day-num">'+day.getDate()+'</div>'+
         shown.map(function(j){ return '<div class="day-chip '+(j.projStatus==='delayed'?'delayed':(j.status==='done'?'done':''))+'" title="'+esc(j.task)+'">'+esc(j.project||j.task)+'</div>'; }).join('')+
         (jobs.length>3? '<div class="day-more">+'+(jobs.length-3)+' more</div>' : '')+
@@ -677,25 +713,8 @@ function renderCalendarView(){
     }
     weeksHTML+='</div>';
   }
-
-  el.innerHTML =
-    '<div class="cal-month-toolbar">'+
-      '<div class="cal-nav"><button data-cal-prev>‹</button><span class="month-label">'+calMonthCursor.toLocaleDateString('en-GB',{month:'long',year:'numeric'})+'</span><button data-cal-next>›</button><button data-cal-today>This Month</button></div>'+
-      '<div>'+
-        '<button class="btn btn-secondary btn-sm" data-export-pdf>Export PDF</button> '+
-        '<button class="btn btn-secondary btn-sm" data-export-xls>Export Excel</button> '+
-        (canOperate()? '<button class="btn btn-secondary btn-sm" data-mark-attendance>Mark Attendance</button> <button class="btn btn-secondary btn-sm" data-manage-team>Manage Team</button> <button class="btn btn-add btn-sm" data-add-job>+ Add Job</button>' : '')+
-      '</div>'+
-    '</div>'+
-    '<div class="month-grid"><div class="dow-row"><div>Sun</div><div>Mon</div><div>Tue</div><div>Wed</div><div>Thu</div><div>Fri</div><div>Sat</div></div>'+weeksHTML+'</div>';
-
-  bindCalendarNav(renderCalendarView, function(c){ calMonthCursor=c; });
-  el.querySelectorAll('[data-day]').forEach(function(cell){ cell.addEventListener('click', function(){ openDayDetailModal(cell.dataset.day); }); });
-  var mt=el.querySelector('[data-manage-team]'); if(mt) mt.addEventListener('click', openTeamModal);
-  var aj=el.querySelector('[data-add-job]'); if(aj) aj.addEventListener('click', function(){ openJobModal(null); });
-  var ma=el.querySelector('[data-mark-attendance]'); if(ma) ma.addEventListener('click', function(){ openAttendanceModal(); });
-  el.querySelector('[data-export-pdf]').addEventListener('click', printMonthCalendar);
-  el.querySelector('[data-export-xls]').addEventListener('click', exportMonthCalendarExcel);
+  grid.innerHTML = weeksHTML;
+  grid.querySelectorAll('[data-day]').forEach(function(cell){ cell.addEventListener('click', function(){ openDayDetailModal(cell.dataset.day); }); });
 }
 function bindCalendarNav(rerender, setCursor){
   var el=document.querySelector('.view.active');
@@ -754,68 +773,82 @@ function bindLeaveRow(row, iso){
 
 /* ---------- Weekly schedule ---------- */
 var weekCursor = mondayOfD(new Date());
+var weekSearchQuery = '';
 function renderWeeklyView(){
   var el=document.getElementById('view-weekly');
   var days=[]; for(var i=0;i<6;i++) days.push(addDaysD(weekCursor,i)); // Mon-Sat
-  var team=teamList();
-  var byDate=jobsByDate();
 
   var toolbarHTML =
     '<div class="cal-month-toolbar">'+
       '<div class="week-nav"><button data-week-prev>◀ Prev</button><span class="week-label">'+fmtShortD(days[0])+' – '+fmtShortD(days[5])+'</span><button data-week-next>Next ▶</button><button data-week-today>This Week</button></div>'+
       '<div>'+
+        '<input type="search" id="weekSearch" placeholder="Search jobs…" value="'+esc(weekSearchQuery)+'"> '+
         '<button class="btn btn-secondary btn-sm" data-export-pdf>Export PDF</button> '+
         '<button class="btn btn-secondary btn-sm" data-export-xls>Export Excel</button> '+
         (canOperate()? '<button class="btn btn-secondary btn-sm" data-mark-attendance>Mark Attendance</button> <button class="btn btn-secondary btn-sm" data-manage-team>Manage Team</button> <button class="btn btn-add btn-sm" data-add-job>+ Add Job</button>' : '')+
       '</div>'+
     '</div>';
 
-  if(!team.length){
-    el.innerHTML = toolbarHTML + '<div class="empty-state">No team members yet.'+(canOperate()?' Click "Manage Team" to add your field crew.':'')+'</div>';
-  } else {
-    var assign={};
-    visibleJobs().forEach(function(j){
-      if(!j.assignees || !j.assignees.length || !j.start || !j.end) return;
-      var proj=j.projectId?state.projects[j.projectId]:null;
-      var s=parseISODate(j.start), e=parseISODate(j.end);
-      days.forEach(function(d){
-        if(d>=s && d<=e){
-          var iso=toISODate(d);
-          j.assignees.forEach(function(name){
-            assign[name]=assign[name]||{}; assign[name][iso]=assign[name][iso]||[];
-            assign[name][iso].push({ project:j.projectLabel||(proj?proj.name:''), task:j.name, status:j.status==='done'?'completed':(j.status==='in-progress'?'in-progress':'planning'), jobId:j.id });
-          });
-        }
-      });
-    });
-
-    var tableHTML = '<thead><tr><th class="cal-member" style="position:sticky;top:0;background:#0f3460">Member</th>'+
-      days.map(function(d){ return '<th>'+d.toLocaleDateString('en-GB',{weekday:'short'})+'<br>'+fmtShortD(d)+'</th>'; }).join('')+
-      '</tr></thead><tbody>'+
-      team.map(function(m){
-        var rowHTML='<tr><td class="cal-member">'+esc(m.name)+'<div style="font-weight:400;color:#7a8bb0;font-size:10px">'+esc(m.trade||'')+'</div></td>';
-        days.forEach(function(d){
-          var iso=toISODate(d);
-          var items=(assign[m.name]&&assign[m.name][iso])||[];
-          var absStatus=getAttendance(iso)[m.name];
-          var chips=items.map(function(it){ return '<div class="cal-chip status-'+it.status+'" data-job-edit="'+it.jobId+'">'+(it.project?'<b>'+esc(it.project)+'</b>':'')+esc(it.task)+'</div>'; }).join('');
-          rowHTML+='<td>'+chips+(absStatus?'<span class="absence-tag '+absStatus+'">'+ABSENCE_LABELS[absStatus]+'</span>':'')+'</td>';
-        });
-        return rowHTML+'</tr>';
-      }).join('')+'</tbody>';
-
-    el.innerHTML = toolbarHTML + '<div class="cal-wrap"><table class="cal-table">'+tableHTML+'</table></div>';
-    el.querySelectorAll('[data-job-edit]').forEach(function(chip){ chip.addEventListener('click', function(){ openJobModal(chip.dataset.jobEdit); }); });
-  }
+  el.innerHTML = toolbarHTML + '<div id="weekGridWrap"></div>';
 
   el.querySelector('[data-week-prev]').addEventListener('click', function(){ weekCursor=addDaysD(weekCursor,-7); renderWeeklyView(); });
   el.querySelector('[data-week-next]').addEventListener('click', function(){ weekCursor=addDaysD(weekCursor,7); renderWeeklyView(); });
   el.querySelector('[data-week-today]').addEventListener('click', function(){ weekCursor=mondayOfD(new Date()); renderWeeklyView(); });
+  document.getElementById('weekSearch').addEventListener('input', function(){ weekSearchQuery=this.value; renderWeeklyGrid(); });
   var mt=el.querySelector('[data-manage-team]'); if(mt) mt.addEventListener('click', openTeamModal);
   var aj=el.querySelector('[data-add-job]'); if(aj) aj.addEventListener('click', function(){ openJobModal(null); });
   var ma=el.querySelector('[data-mark-attendance]'); if(ma) ma.addEventListener('click', function(){ openAttendanceModal(); });
   el.querySelector('[data-export-pdf]').addEventListener('click', printWeeklySchedule);
   el.querySelector('[data-export-xls]').addEventListener('click', exportWeeklyScheduleExcel);
+  renderWeeklyGrid();
+}
+/* separate from renderWeeklyView() so typing in the search box only
+   rebuilds the grid, not the toolbar (same reasoning as renderCalendarGrid) */
+function renderWeeklyGrid(){
+  var wrap=document.getElementById('weekGridWrap'); if(!wrap) return;
+  var days=[]; for(var i=0;i<6;i++) days.push(addDaysD(weekCursor,i));
+  var team=teamList();
+  var q=weekSearchQuery.trim().toLowerCase();
+
+  if(!team.length){
+    wrap.innerHTML = '<div class="empty-state">No team members yet.'+(canOperate()?' Click "Manage Team" to add your field crew.':'')+'</div>';
+    return;
+  }
+
+  var assign={};
+  visibleJobs().forEach(function(j){
+    if(!j.assignees || !j.assignees.length || !j.start || !j.end) return;
+    var proj=j.projectId?state.projects[j.projectId]:null;
+    var s=parseISODate(j.start), e=parseISODate(j.end);
+    days.forEach(function(d){
+      if(d>=s && d<=e){
+        var iso=toISODate(d);
+        j.assignees.forEach(function(name){
+          assign[name]=assign[name]||{}; assign[name][iso]=assign[name][iso]||[];
+          assign[name][iso].push({ project:j.projectLabel||(proj?proj.name:''), task:j.name, status:j.status==='done'?'completed':(j.status==='in-progress'?'in-progress':'planning'), jobId:j.id });
+        });
+      }
+    });
+  });
+
+  var tableHTML = '<thead><tr><th class="cal-member" style="position:sticky;top:0;background:#0f3460">Member</th>'+
+    days.map(function(d){ return '<th>'+d.toLocaleDateString('en-GB',{weekday:'short'})+'<br>'+fmtShortD(d)+'</th>'; }).join('')+
+    '</tr></thead><tbody>'+
+    team.map(function(m){
+      var rowHTML='<tr><td class="cal-member">'+esc(m.name)+'<div style="font-weight:400;color:#7a8bb0;font-size:10px">'+esc(m.trade||'')+'</div></td>';
+      days.forEach(function(d){
+        var iso=toISODate(d);
+        var allItems=(assign[m.name]&&assign[m.name][iso])||[];
+        var items = q ? allItems.filter(function(it){ return jobEntryMatches(it,q); }) : allItems;
+        var absStatus=getAttendance(iso)[m.name];
+        var chips=items.map(function(it){ return '<div class="cal-chip status-'+it.status+'" data-job-edit="'+it.jobId+'">'+(it.project?'<b>'+esc(it.project)+'</b>':'')+esc(it.task)+'</div>'; }).join('');
+        rowHTML+='<td'+(q&&allItems.length&&!items.length?' class="search-miss"':'')+'>'+chips+(absStatus?'<span class="absence-tag '+absStatus+'">'+ABSENCE_LABELS[absStatus]+'</span>':'')+'</td>';
+      });
+      return rowHTML+'</tr>';
+    }).join('')+'</tbody>';
+
+  wrap.innerHTML = '<div class="cal-wrap"><table class="cal-table">'+tableHTML+'</table></div>';
+  wrap.querySelectorAll('[data-job-edit]').forEach(function(chip){ chip.addEventListener('click', function(){ openJobModal(chip.dataset.jobEdit); }); });
 }
 
 /* ---------- Job modal (add/edit) ---------- */
@@ -1552,14 +1585,19 @@ function buildWorkReport(jobs){
   });
   rows.sort(function(a,b){ return a.date<b.date?-1:(a.date>b.date?1:0); });
   var manDays=rows.reduce(function(s,r){ return s+r.workers; }, 0);
-  return {rows:rows, manDays:manDays};
+  // trips = distinct site-visit days, not every worker on every day (unlike man-days)
+  var tripDates={}; rows.forEach(function(r){ tripDates[r.date]=1; });
+  var trips=Object.keys(tripDates).length;
+  return {rows:rows, manDays:manDays, trips:trips};
 }
 function projectWorkReport(projId){ return buildWorkReport(jobsForProject(projId)); }
-function unassignedWorkReport(){ return buildWorkReport(Object.values(state.jobs).filter(function(j){ return !j.projectId; })); }
+function unassignedJobs(){ return Object.values(state.jobs).filter(function(j){ return !j.projectId; }); }
+function unassignedWorkReport(){ return buildWorkReport(unassignedJobs()); }
 function workReportTableHTML(rep){
   return '<table class="item-table"><thead><tr><th style="width:100px">Date</th><th>Job</th><th class="num-col" style="width:80px">Workers</th></tr></thead><tbody>'+
     rep.rows.map(function(r){ return '<tr><td>'+fmtDate(r.date)+'</td><td>'+esc(r.job)+'</td><td class="num-col">'+r.workers+'</td></tr>'; }).join('')+
-    '</tbody><tfoot><tr><td colspan="2"><b>Total Man-Days</b></td><td class="num-col"><b>'+rep.manDays+'</b></td></tr></tfoot></table>';
+    '</tbody><tfoot><tr><td colspan="2"><b>Total Man-Days</b></td><td class="num-col"><b>'+rep.manDays+'</b></td></tr>'+
+    '<tr><td colspan="2"><b>Total Trips</b></td><td class="num-col"><b>'+rep.trips+'</b></td></tr></tfoot></table>';
 }
 function detailWorkDone(p){
   var rep=projectWorkReport(p.id);
@@ -1586,14 +1624,20 @@ function unassignedCardHTML(unrep){
       '<div class="pc-site">'+unrep.rows.length+' entries • '+unrep.manDays+' man-days</div>'+
     '</div></div><div style="font-size:12px;color:#7a8bb0">Jobs added via Calendar / Weekly Schedule without a linked project</div></div>';
 }
+/* search matches the project itself (name/client/site) OR any job scheduled
+   under it (job name) — so typing a job description surfaces the project
+   it belongs to, not just projects matching by name */
 function renderWorkDoneGrid(){
   var grid=document.getElementById('wdGrid'); if(!grid) return;
-  var q=((document.getElementById('wdSearch')||{}).value||'').toLowerCase();
+  var q=((document.getElementById('wdSearch')||{}).value||'').trim().toLowerCase();
   var projs=sortedProjects().filter(function(p){
-    return !q || ((p.name||'')+' '+(p.client||'')+' '+(p.site||'')).toLowerCase().includes(q);
+    if(!q) return true;
+    if(((p.name||'')+' '+(p.client||'')+' '+(p.site||'')).toLowerCase().includes(q)) return true;
+    return jobsForProject(p.id).some(function(j){ return (j.name||'').toLowerCase().includes(q); });
   });
   var unrep=unassignedWorkReport();
-  var showUnassigned = unrep.rows.length && (!q || 'unassigned no project'.indexOf(q)>=0);
+  var unassignedJobMatch = q && unassignedJobs().some(function(j){ return (j.name||'').toLowerCase().includes(q); });
+  var showUnassigned = unrep.rows.length && (!q || 'unassigned no project'.indexOf(q)>=0 || unassignedJobMatch);
   var html = projs.map(projectCardHTML).join('') + (showUnassigned? unassignedCardHTML(unrep) : '');
   if(!html){
     grid.innerHTML='<div class="empty-state">'+(q? 'No projects match your search.'
