@@ -1607,16 +1607,19 @@ function detailWorkDone(p){
 }
 
 /* ---------- Work Done (sidebar page) ---------- */
-/* Pick a project here first, then see its chronological work log (same
-   picker pattern as Items/Documents/Claims) — opens straight into that
-   project's existing Work Done tab rather than duplicating the table here. */
+/* Two modes in one page: with the search box empty, pick a project (same
+   picker pattern as Items/Documents/Claims) then "go inside" to its Work
+   Done tab. Once you type a search, it stops being a project picker and
+   becomes a flat chronological list of every JOB (across all projects,
+   plus unassigned) whose name/site/assignees match — the search finds
+   jobs directly rather than just filtering which project cards show. */
 function renderWorkDoneView(){
   var el=document.getElementById('view-workdone');
   el.innerHTML=
-    '<div class="toolbar"><input type="search" id="wdSearch" placeholder="Search projects…"></div>'+
-    '<div class="project-grid" id="wdGrid"></div>';
-  document.getElementById('wdSearch').addEventListener('input', renderWorkDoneGrid);
-  renderWorkDoneGrid();
+    '<div class="toolbar"><input type="search" id="wdSearch" placeholder="Search jobs…"></div>'+
+    '<div id="wdResults"></div>';
+  document.getElementById('wdSearch').addEventListener('input', renderWorkDoneResults);
+  renderWorkDoneResults();
 }
 function unassignedCardHTML(unrep){
   return '<div class="project-card" id="wdUnassignedCard"><div class="pc-top"><div>'+
@@ -1624,28 +1627,52 @@ function unassignedCardHTML(unrep){
       '<div class="pc-site">'+unrep.rows.length+' entries • '+unrep.manDays+' man-days</div>'+
     '</div></div><div style="font-size:12px;color:#7a8bb0">Jobs added via Calendar / Weekly Schedule without a linked project</div></div>';
 }
-/* search matches the project itself (name/client/site) OR any job scheduled
-   under it (job name) — so typing a job description surfaces the project
-   it belongs to, not just projects matching by name */
-function renderWorkDoneGrid(){
-  var grid=document.getElementById('wdGrid'); if(!grid) return;
-  var q=((document.getElementById('wdSearch')||{}).value||'').trim().toLowerCase();
-  var projs=sortedProjects().filter(function(p){
-    if(!q) return true;
-    if(((p.name||'')+' '+(p.client||'')+' '+(p.site||'')).toLowerCase().includes(q)) return true;
-    return jobsForProject(p.id).some(function(j){ return (j.name||'').toLowerCase().includes(q); });
+/* every job (regardless of project), matched by the same task/project/
+   assignees text as the Calendar/Weekly search boxes, expanded per day and
+   labelled with its site so results from different projects aren't mixed up */
+function searchJobRows(q){
+  var rows=[];
+  Object.values(state.jobs).forEach(function(j){
+    if(!j.start || !j.end) return;
+    if(j.projectId){
+      var p=state.projects[j.projectId];
+      if(!p || !canSeeProject(p)) return;
+    }
+    var label = j.projectLabel || 'Unassigned / No Project';
+    if(!jobEntryMatches({task:j.name, project:label, assignees:j.assignees}, q)) return;
+    var s=parseISODate(j.start), e=parseISODate(j.end), d=new Date(s), n=(j.assignees||[]).length;
+    while(d<=e){ rows.push({date:toISODate(d), project:label, job:j.name, workers:n}); d=addDaysD(d,1); }
   });
-  var unrep=unassignedWorkReport();
-  var unassignedJobMatch = q && unassignedJobs().some(function(j){ return (j.name||'').toLowerCase().includes(q); });
-  var showUnassigned = unrep.rows.length && (!q || 'unassigned no project'.indexOf(q)>=0 || unassignedJobMatch);
-  var html = projs.map(projectCardHTML).join('') + (showUnassigned? unassignedCardHTML(unrep) : '');
-  if(!html){
-    grid.innerHTML='<div class="empty-state">'+(q? 'No projects match your search.'
-      : ((isSalesman()||isLapCoordinator())?'No projects have been assigned to you yet.':'No projects yet.'))+'</div>';
+  rows.sort(function(a,b){ return a.date<b.date?-1:(a.date>b.date?1:0); });
+  var manDays=rows.reduce(function(s,r){ return s+r.workers; }, 0);
+  var tripKeys={}; rows.forEach(function(r){ tripKeys[r.date+'|'+r.project]=1; }); // one trip per site per day
+  return {rows:rows, manDays:manDays, trips:Object.keys(tripKeys).length};
+}
+function searchResultsTableHTML(rep){
+  return '<table class="item-table"><thead><tr><th style="width:100px">Date</th><th>Project / Site</th><th>Job</th><th class="num-col" style="width:80px">Workers</th></tr></thead><tbody>'+
+    rep.rows.map(function(r){ return '<tr><td>'+fmtDate(r.date)+'</td><td>'+esc(r.project)+'</td><td>'+esc(r.job)+'</td><td class="num-col">'+r.workers+'</td></tr>'; }).join('')+
+    '</tbody><tfoot><tr><td colspan="3"><b>Total Man-Days</b></td><td class="num-col"><b>'+rep.manDays+'</b></td></tr>'+
+    '<tr><td colspan="3"><b>Total Trips</b></td><td class="num-col"><b>'+rep.trips+'</b></td></tr></tfoot></table>';
+}
+function renderWorkDoneResults(){
+  var wrap=document.getElementById('wdResults'); if(!wrap) return;
+  var q=((document.getElementById('wdSearch')||{}).value||'').trim().toLowerCase();
+
+  if(q){
+    var rep=searchJobRows(q);
+    wrap.innerHTML = rep.rows.length
+      ? '<div style="font-size:12px;color:#7a8bb0;margin-bottom:10px">'+rep.rows.length+' matching job-day '+(rep.rows.length===1?'entry':'entries')+' across all projects</div>'+searchResultsTableHTML(rep)
+      : '<div class="empty-state">No jobs match your search.</div>';
     return;
   }
-  grid.innerHTML=html;
-  wireProjectCards(grid, 'workdone');
+
+  var projs=sortedProjects();
+  var unrep=unassignedWorkReport();
+  var cardsHTML = projs.map(projectCardHTML).join('') + (unrep.rows.length? unassignedCardHTML(unrep) : '');
+  wrap.innerHTML = cardsHTML
+    ? '<div class="project-grid">'+cardsHTML+'</div>'
+    : '<div class="empty-state">'+((isSalesman()||isLapCoordinator())?'No projects have been assigned to you yet.':'No projects yet.')+'</div>';
+  wireProjectCards(wrap, 'workdone');
   var u=document.getElementById('wdUnassignedCard');
   if(u) u.addEventListener('click', openUnassignedWorkDone);
 }
