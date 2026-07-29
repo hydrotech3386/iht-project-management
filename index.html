@@ -1513,7 +1513,7 @@ function openProjectDetail(id, tab){
   var p=state.projects[id]; if(!p) return;
   if(!canSeeProject(p)){ toast('That project is not assigned to you','err'); return; }
   detailProjId=id; detailTab=tab||'overview'; docFolderId=''; photoFolderId='';
-  detailItemsSectionFilter=''; detailItemsSearch=''; detailItemsHideDone=false;
+  detailItemsSectionFilter=''; detailItemsSearch=''; detailItemsHideDone=false; detailWorkDoneMonth='';
   renderProjectDetail();
 }
 function curProj(){ return state.projects[detailProjId]; }
@@ -1599,11 +1599,41 @@ function workReportTableHTML(rep){
     '</tbody><tfoot><tr><td colspan="2"><b>Total Man-Days</b></td><td class="num-col"><b>'+rep.manDays+'</b></td></tr>'+
     '<tr><td colspan="2"><b>Total Trips</b></td><td class="num-col"><b>'+rep.trips+'</b></td></tr></tfoot></table>';
 }
+/* distinct YYYY-MM values present in a report, most recent first — used to
+   populate the month filter on the per-project and Unassigned Work Done views */
+function reportMonths(rep){
+  var set={};
+  rep.rows.forEach(function(r){ set[r.date.slice(0,7)]=1; });
+  return Object.keys(set).sort().reverse();
+}
+function monthLabel(ym){
+  var parts=ym.split('-');
+  return new Date(+parts[0], +parts[1]-1, 1).toLocaleDateString('en-GB',{month:'long',year:'numeric'});
+}
+function monthOptionsHTML(months, selected){
+  return '<option value="">All months</option>'+months.map(function(m){
+    return '<option value="'+m+'"'+(selected===m?' selected':'')+'>'+monthLabel(m)+'</option>'; }).join('');
+}
+function filterReportByMonth(rep, ym){
+  if(!ym) return rep;
+  var rows=rep.rows.filter(function(r){ return r.date.slice(0,7)===ym; });
+  var manDays=rows.reduce(function(s,r){ return s+r.workers; }, 0);
+  var tripDates={}; rows.forEach(function(r){ tripDates[r.date]=1; });
+  return {rows:rows, manDays:manDays, trips:Object.keys(tripDates).length};
+}
+var detailWorkDoneMonth='';
 function detailWorkDone(p){
   var rep=projectWorkReport(p.id);
   if(!rep.rows.length) return '<div class="empty-state">No scheduled jobs linked to this project yet. Jobs added via Calendar or Weekly Schedule with this project selected will show up here.</div>';
+  var months=reportMonths(rep);
+  if(months.indexOf(detailWorkDoneMonth)===-1) detailWorkDoneMonth='';
   return '<div style="font-size:12px;color:#7a8bb0;margin-bottom:10px">From the Calendar / Weekly Schedule — only jobs explicitly linked to this project.</div>'+
-    workReportTableHTML(rep);
+    (months.length>1? '<div class="toolbar"><select id="dwdMonth">'+monthOptionsHTML(months, detailWorkDoneMonth)+'</select></div>' : '')+
+    '<div id="dwdWrap">'+workReportTableHTML(filterReportByMonth(rep, detailWorkDoneMonth))+'</div>';
+}
+function renderDetailWorkDoneWrap(p){
+  var wrap=document.getElementById('dwdWrap'); if(!wrap) return;
+  wrap.innerHTML=workReportTableHTML(filterReportByMonth(projectWorkReport(p.id), detailWorkDoneMonth));
 }
 
 /* ---------- Work Done (sidebar page) ---------- */
@@ -1676,13 +1706,24 @@ function renderWorkDoneResults(){
   var u=document.getElementById('wdUnassignedCard');
   if(u) u.addEventListener('click', openUnassignedWorkDone);
 }
+var unassignedWorkDoneMonth='';
 function openUnassignedWorkDone(){
+  unassignedWorkDoneMonth='';
   var rep=unassignedWorkReport();
+  var months=reportMonths(rep);
   openModal('<div class="modal-head"><div><h2>Unassigned / No Project</h2>'+
     '<div class="sub">Jobs added via Calendar / Weekly Schedule without a linked project</div></div>'+
     '<button class="modal-close" data-close>&times;</button></div>'+
-    '<div style="padding:16px 20px">'+workReportTableHTML(rep)+'</div>', true);
+    '<div style="padding:16px 20px">'+
+      (months.length>1? '<div class="toolbar"><select id="uwdMonth">'+monthOptionsHTML(months, unassignedWorkDoneMonth)+'</select></div>' : '')+
+      '<div id="uwdWrap">'+workReportTableHTML(filterReportByMonth(rep, unassignedWorkDoneMonth))+'</div>'+
+    '</div>', true);
   bindClose();
+  var sel=document.getElementById('uwdMonth');
+  if(sel) sel.addEventListener('change', function(){
+    unassignedWorkDoneMonth=this.value;
+    document.getElementById('uwdWrap').innerHTML=workReportTableHTML(filterReportByMonth(rep, unassignedWorkDoneMonth));
+  });
 }
 function detailItems(p){
   var allIts=projectItems(p.id);
@@ -1814,6 +1855,7 @@ function wireDetailActions(p){
   var ai2=modalBox.querySelector('[data-add-item]'); if(ai2) ai2.addEventListener('click', function(){ openItemForm({projectId:p.id}); });
   var diS=modalBox.querySelector('#diSearch'); if(diS) diS.addEventListener('input', function(){ detailItemsSearch=this.value.toLowerCase(); renderDetailItemsWrap(p); });
   var diH=modalBox.querySelector('#diHideDone'); if(diH) diH.addEventListener('change', function(){ detailItemsHideDone=this.checked; renderDetailItemsWrap(p); });
+  var dwdM=modalBox.querySelector('#dwdMonth'); if(dwdM) dwdM.addEventListener('change', function(){ detailWorkDoneMonth=this.value; renderDetailWorkDoneWrap(p); });
   var nc=modalBox.querySelector('[data-new-claim]'); if(nc) nc.addEventListener('click', function(){ newClaimFlow(p.id); });
   modalBox.querySelectorAll('[data-claim]').forEach(function(r){ r.addEventListener('click', function(){ openClaim(r.dataset.claim); }); });
   var np=modalBox.querySelector('[data-new-payment]'); if(np) np.addEventListener('click', function(){ addPaymentFlow(p); });
