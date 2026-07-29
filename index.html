@@ -1593,11 +1593,17 @@ function buildWorkReport(jobs){
 function projectWorkReport(projId){ return buildWorkReport(jobsForProject(projId)); }
 function unassignedJobs(){ return Object.values(state.jobs).filter(function(j){ return !j.projectId; }); }
 function unassignedWorkReport(){ return buildWorkReport(unassignedJobs()); }
+/* reuses the Dashboard's stat-card/stat-row look (see statCard()) so the
+   totals read as a summary up front, not a footnote scrolled past at the end */
+function workReportSummaryHTML(rep){
+  return '<div class="stat-row" style="grid-template-columns:repeat(2,1fr);margin-bottom:14px">'+
+    statCard(rep.manDays,'Total Man-Days')+statCard(rep.trips,'Total Trips')+'</div>';
+}
 function workReportTableHTML(rep){
-  return '<table class="item-table"><thead><tr><th style="width:100px">Date</th><th>Job</th><th class="num-col" style="width:80px">Workers</th></tr></thead><tbody>'+
+  return workReportSummaryHTML(rep)+
+    '<table class="item-table"><thead><tr><th style="width:100px">Date</th><th>Job</th><th class="num-col" style="width:80px">Workers</th></tr></thead><tbody>'+
     rep.rows.map(function(r){ return '<tr><td>'+fmtDate(r.date)+'</td><td>'+esc(r.job)+'</td><td class="num-col">'+r.workers+'</td></tr>'; }).join('')+
-    '</tbody><tfoot><tr><td colspan="2"><b>Total Man-Days</b></td><td class="num-col"><b>'+rep.manDays+'</b></td></tr>'+
-    '<tr><td colspan="2"><b>Total Trips</b></td><td class="num-col"><b>'+rep.trips+'</b></td></tr></tfoot></table>';
+    '</tbody></table>';
 }
 /* distinct YYYY-MM values present in a report, most recent first — used to
    populate the month filter on the per-project and Unassigned Work Done views */
@@ -1679,10 +1685,10 @@ function searchJobRows(q){
   return {rows:rows, manDays:manDays, trips:Object.keys(tripKeys).length};
 }
 function searchResultsTableHTML(rep){
-  return '<table class="item-table"><thead><tr><th style="width:100px">Date</th><th>Project / Site</th><th>Job</th><th class="num-col" style="width:80px">Workers</th></tr></thead><tbody>'+
+  return workReportSummaryHTML(rep)+
+    '<table class="item-table"><thead><tr><th style="width:100px">Date</th><th>Project / Site</th><th>Job</th><th class="num-col" style="width:80px">Workers</th></tr></thead><tbody>'+
     rep.rows.map(function(r){ return '<tr><td>'+fmtDate(r.date)+'</td><td>'+esc(r.project)+'</td><td>'+esc(r.job)+'</td><td class="num-col">'+r.workers+'</td></tr>'; }).join('')+
-    '</tbody><tfoot><tr><td colspan="3"><b>Total Man-Days</b></td><td class="num-col"><b>'+rep.manDays+'</b></td></tr>'+
-    '<tr><td colspan="3"><b>Total Trips</b></td><td class="num-col"><b>'+rep.trips+'</b></td></tr></tfoot></table>';
+    '</tbody></table>';
 }
 function renderWorkDoneResults(){
   var wrap=document.getElementById('wdResults'); if(!wrap) return;
