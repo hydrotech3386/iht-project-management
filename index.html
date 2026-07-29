@@ -1014,7 +1014,12 @@ function openPrintWindow(title, bodyHTML){
       // reflects genuine print pagination, then shrink (via CSS zoom, which
       // reflows unlike transform:scale) only if that height still overflows one page
       var fit=w.document.getElementById('sdFit');
-      var pxPerMM=96/25.4, printableW=(297-24)*pxPerMM, printableH=(210-24)*pxPerMM; // A4 landscape minus 12mm margins
+      var pxPerMM=96/25.4, printableW=(297-24)*pxPerMM;
+      // when the browser's own "Headers and footers" print option is on, it reserves
+      // extra top/bottom space for the date/title/URL that our @page margin doesn't
+      // know about and JS can't detect — budget for it so content still fits on one
+      // page either way, rather than measuring against the full nominal page height
+      var printableH=(210-24-26)*pxPerMM;
       fit.style.width=printableW+'px';
       var scale=Math.min(1, printableH/fit.scrollHeight);
       if(scale<1) fit.style.zoom=scale;
