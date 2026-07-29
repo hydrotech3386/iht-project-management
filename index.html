@@ -1004,9 +1004,23 @@ function scheduleDocHead(title){
 function openPrintWindow(title, bodyHTML){
   var w=window.open('','_blank');
   if(!w){ toast('Popup blocked — allow popups to export','err'); return; }
-  w.document.write('<!DOCTYPE html><html><head><meta charset="utf-8"><title>'+esc(title)+'</title><style>'+SCHEDULE_PRINT_CSS+'</style></head><body>'+bodyHTML+'</body></html>');
+  w.document.write('<!DOCTYPE html><html><head><meta charset="utf-8"><title>'+esc(title)+'</title><style>'+SCHEDULE_PRINT_CSS+'</style></head><body><div id="sdFit">'+bodyHTML+'</div></body></html>');
   w.document.close();
-  setTimeout(function(){ try{ w.focus(); w.print(); }catch(e){} }, 600);
+  setTimeout(function(){
+    try{
+      // the table is already width:100%, so on-screen scrollWidth just reflects
+      // this popup's arbitrary window size, not the real printed width — pin the
+      // wrapper to the true A4-landscape printable width first so scrollHeight
+      // reflects genuine print pagination, then shrink (via CSS zoom, which
+      // reflows unlike transform:scale) only if that height still overflows one page
+      var fit=w.document.getElementById('sdFit');
+      var pxPerMM=96/25.4, printableW=(297-24)*pxPerMM, printableH=(210-24)*pxPerMM; // A4 landscape minus 12mm margins
+      fit.style.width=printableW+'px';
+      var scale=Math.min(1, printableH/fit.scrollHeight);
+      if(scale<1) fit.style.zoom=scale;
+      w.focus(); w.print();
+    }catch(e){}
+  }, 600);
   toast('Choose “Save as PDF” in the print dialog','ok');
 }
 /* minimal, reusable style set for schedule exports — bold navy header row,
