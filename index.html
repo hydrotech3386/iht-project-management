@@ -1568,25 +1568,50 @@ function detailWorkDone(p){
     workReportTableHTML(rep);
 }
 
-/* ---------- Work Done (sidebar page) — every project's chronological work log, all in one place ---------- */
+/* ---------- Work Done (sidebar page) ---------- */
+/* Pick a project here first, then see its chronological work log (same
+   picker pattern as Items/Documents/Claims) — opens straight into that
+   project's existing Work Done tab rather than duplicating the table here. */
 function renderWorkDoneView(){
   var el=document.getElementById('view-workdone');
-  var projs=Object.values(state.projects).filter(canSeeProject).sort(function(a,b){ return (a.name||'').localeCompare(b.name||''); });
-  var sections='', grandTotal=0, any=false;
-  projs.forEach(function(p){
-    var rep=projectWorkReport(p.id);
-    if(!rep.rows.length) return;
-    any=true; grandTotal+=rep.manDays;
-    sections+='<div class="panel"><h3>'+esc(p.name)+'</h3>'+workReportTableHTML(rep)+'</div>';
+  el.innerHTML=
+    '<div class="toolbar"><input type="search" id="wdSearch" placeholder="Search projects…"></div>'+
+    '<div class="project-grid" id="wdGrid"></div>';
+  document.getElementById('wdSearch').addEventListener('input', renderWorkDoneGrid);
+  renderWorkDoneGrid();
+}
+function unassignedCardHTML(unrep){
+  return '<div class="project-card" id="wdUnassignedCard"><div class="pc-top"><div>'+
+      '<div class="pc-name">Unassigned / No Project</div>'+
+      '<div class="pc-site">'+unrep.rows.length+' entries • '+unrep.manDays+' man-days</div>'+
+    '</div></div><div style="font-size:12px;color:#7a8bb0">Jobs added via Calendar / Weekly Schedule without a linked project</div></div>';
+}
+function renderWorkDoneGrid(){
+  var grid=document.getElementById('wdGrid'); if(!grid) return;
+  var q=((document.getElementById('wdSearch')||{}).value||'').toLowerCase();
+  var projs=sortedProjects().filter(function(p){
+    return !q || ((p.name||'')+' '+(p.client||'')+' '+(p.site||'')).toLowerCase().includes(q);
   });
   var unrep=unassignedWorkReport();
-  if(unrep.rows.length){
-    any=true; grandTotal+=unrep.manDays;
-    sections+='<div class="panel"><h3>Unassigned / No Project</h3>'+workReportTableHTML(unrep)+'</div>';
+  var showUnassigned = unrep.rows.length && (!q || 'unassigned no project'.indexOf(q)>=0);
+  var html = projs.map(projectCardHTML).join('') + (showUnassigned? unassignedCardHTML(unrep) : '');
+  if(!html){
+    grid.innerHTML='<div class="empty-state">'+(q? 'No projects match your search.'
+      : ((isSalesman()||isLapCoordinator())?'No projects have been assigned to you yet.':'No projects yet.'))+'</div>';
+    return;
   }
-  el.innerHTML = any
-    ? sections+'<div style="text-align:right;font-size:14px;font-weight:bold;color:#fff;margin-top:6px">GRAND TOTAL MAN-DAYS: '+grandTotal+'</div>'
-    : '<div class="empty-state">No scheduled jobs yet. Add jobs via Calendar or Weekly Schedule.</div>';
+  grid.innerHTML=html;
+  wireProjectCards(grid, 'workdone');
+  var u=document.getElementById('wdUnassignedCard');
+  if(u) u.addEventListener('click', openUnassignedWorkDone);
+}
+function openUnassignedWorkDone(){
+  var rep=unassignedWorkReport();
+  openModal('<div class="modal-head"><div><h2>Unassigned / No Project</h2>'+
+    '<div class="sub">Jobs added via Calendar / Weekly Schedule without a linked project</div></div>'+
+    '<button class="modal-close" data-close>&times;</button></div>'+
+    '<div style="padding:16px 20px">'+workReportTableHTML(rep)+'</div>', true);
+  bindClose();
 }
 function detailItems(p){
   var allIts=projectItems(p.id);
