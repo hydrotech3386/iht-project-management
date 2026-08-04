@@ -571,7 +571,7 @@ function canSeePrice(p){
    even though they can see everything else about the project */
 function canSeeSourceDocs(){ return !isLapCoordinator(); }
 /* only admins/engineers create projects and assign a salesman */
-function canCreateProjects(){ return isAdmin() || isEngineer(); }
+function canCreateProjects(){ return isAdmin() || isEngineer() || isSalesman(); }
 /* project visibility is the UNION of whatever each held role grants */
 function canSeeProject(p){
   if(!p) return false;
@@ -1491,8 +1491,13 @@ function openProjectForm(p){
   document.getElementById('saveProjBtn').addEventListener('click', function(){
     var name=val('pfName').trim(); if(!name){ toast('Project name required','err'); return; }
     var projectType=val('pfType'); if(!projectType){ toast('Select a project type','err'); return; }
-    // salesman assignment is admin-only; non-admins keep whatever was already set
-    var salesmanId = isAdmin() ? val('pfSalesman') : (p.salesmanId||'');
+    // salesman assignment is admin-only; non-admins keep whatever was already
+    // set — except a salesman creating a brand-new project, who is auto-
+    // assigned to their own project (otherwise canSeeProject would hide it
+    // from them the moment this modal closes, since it's unassigned)
+    var salesmanId = isAdmin() ? val('pfSalesman')
+      : (isNew && isSalesman() && currentUser) ? currentUser.uid
+      : (p.salesmanId||'');
     if(salesmanId==='__new__') salesmanId='';   // sentinel never a real selection at save time
     var smUser = salesmanId ? state.users[salesmanId] : null;
     var smRoster = (!smUser && salesmanId) ? state.roster[salesmanId] : null;
