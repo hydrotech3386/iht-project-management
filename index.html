@@ -406,7 +406,7 @@ button.btn{padding:8px 16px;border:none;border-radius:6px;cursor:pointer;font-si
       <div class="nav-item" data-view="calendar"><span class="nav-ico">▦</span> Calendar</div>
       <div class="nav-item" data-view="weekly"><span class="nav-ico">▧</span> Weekly Schedule</div>
       <div class="nav-item" data-view="projects"><span class="nav-ico">◈</span> Projects</div>
-      <div class="nav-item" data-view="items"><span class="nav-ico">☑</span> Scope of Works</div>
+      <div class="nav-item" data-view="items"><span class="nav-ico">☑</span> Items</div>
       <div class="nav-item" data-view="workdone"><span class="nav-ico">▥</span> Work Done</div>
       <div class="nav-item money-only" data-view="claims"><span class="nav-ico">◧</span> Claims</div>
       <div class="nav-item" data-view="documents"><span class="nav-ico">▤</span> Documents</div>
@@ -1208,7 +1208,7 @@ function subscribeFirebase(){
 
 /* ---------- navigation ---------- */
 var currentView = 'dashboard';
-var VIEW_TITLES = { dashboard:'Dashboard', calendar:'Team Calendar', weekly:'Weekly Schedule', projects:'Projects', items:'Scope of Works', workdone:'Work Done', claims:'Progress Claims', documents:'Documents', users:'Users' };
+var VIEW_TITLES = { dashboard:'Dashboard', calendar:'Team Calendar', weekly:'Weekly Schedule', projects:'Projects', items:'Items', workdone:'Work Done', claims:'Progress Claims', documents:'Documents', users:'Users' };
 function switchView(v){
   currentView=v;
   document.querySelectorAll('.nav-item').forEach(function(n){ n.classList.toggle('active', n.dataset.view===v); });
@@ -1578,7 +1578,7 @@ function renderProjectDetail(){
       '<div class="sub">'+[p.projectType,statusLabel(p.status),p.client,p.site].filter(Boolean).map(esc).join(' • ')+'</div>'+
     '</div><button class="modal-close" data-close>&times;</button></div>';
   var tabList=['overview','items','workdone','photos','documents'].concat(canSeePrice(p)?['claims']:[]);
-  var TAB_LABELS={overview:'Overview',items:'Scope of Works',workdone:'Work Done',photos:'Photos',documents:'Documents',claims:'Claims'};
+  var TAB_LABELS={overview:'Overview',items:'Items',workdone:'Work Done',photos:'Photos',documents:'Documents',claims:'Claims'};
   var tabs='<div class="detail-tabs">'+tabList.map(function(t){
       return '<div class="detail-tab'+(detailTab===t?' active':'')+'" data-tab="'+t+'">'+TAB_LABELS[t]+'</div>'; }).join('')+'</div>';
   openModal(head+tabs+'<div id="detailBody"></div>', true);
