@@ -523,7 +523,11 @@ function sectionLegendHTML(items, active){
     return '<span class="section-chip'+(active===s?' active':'')+'" data-sec-filter="'+esc(s)+'" style="border-color:'+sectionColor(s)+'"><span class="sw" style="background:'+sectionColor(s)+'"></span>'+esc(s)+'</span>';
   }).join('')+'</div>';
 }
-function daysUntil(d){ if(!d) return null; return Math.round((new Date(d) - new Date(todayISO()))/86400000); }
+function daysUntil(dateStr){
+  if(!dateStr) return null;
+  var d=Math.round((new Date(dateStr+'T00:00:00') - new Date(todayISO()+'T00:00:00'))/86400000);
+  return isNaN(d)? null : d;
+}
 /* Roles — a user can hold ANY COMBINATION of these (stored as roles:[...]):
      admin          — everything, including money, claims and user management
      engineer       — Project Engineer: full editing of ALL projects/items/
@@ -535,6 +539,12 @@ function daysUntil(d){ if(!d) return null; return Math.round((new Date(d) - new 
                        they're assigned to; can update item % and upload
                        photos/documents, but NEVER sees rates, values,
                        claims, or the source PO/BQ/quotation document
+     eoCoordinator  — sees ALL projects of type "EO" (Energy Optimization)
+                       regardless of who they're assigned to, with FULL
+                       access on those — full editing, rates, values,
+                       claims and the source PO/BQ/quotation document.
+                       Unlike lapCoordinator this is essentially admin-
+                       level access, just scoped to EO-type projects only.
    No roles at all = pending, signed in but not yet granted access. A user
    can hold more than one role at once (e.g. Salesman + LAP Coordinator) —
    every check below is a straight union/OR across whichever they hold. */
@@ -545,6 +555,9 @@ function isAdmin(){ return hasRole('admin'); }
 function isEngineer(){ return hasRole('engineer'); }
 function isSalesman(){ return hasRole('salesman'); }
 function isLapCoordinator(){ return hasRole('lapCoordinator'); }
+/* unlike LAP Coordinator, EO Coordinator gets FULL access (edit, prices,
+   claims, source docs) — but only on EO-type projects */
+function isEOCoordinator(){ return hasRole('eoCoordinator'); }
 /* full project/item CRUD — same meaning as before, still excludes LAP
    Coordinator, who gets the narrower "operate" permission below instead */
 /* pass the project when one is in scope — a salesman only has full edit
@@ -554,6 +567,7 @@ function isLapCoordinator(){ return hasRole('lapCoordinator'); }
 function canEdit(p){
   if(isAdmin() || isEngineer()) return true;
   if(isSalesman()) return p ? p.salesmanId===currentUser.uid : true;
+  if(isEOCoordinator() && p && p.projectType==='EO') return true;
   return false;
 }
 /* day-to-day actions LAP Coordinators are also allowed: update % complete,
@@ -561,16 +575,23 @@ function canEdit(p){
    project CRUD, extraction, claims, or anything price-related */
 function canOperate(p){ return canEdit(p) || isLapCoordinator(); }
 /* money is evaluated PER PROJECT: admin always; salesman only on a project
-   assigned to them; engineer and LAP Coordinator never see it anywhere */
+   assigned to them; EO Coordinator on EO-type projects; engineer and LAP
+   Coordinator never see it anywhere */
 function canSeePrice(p){
   if(isAdmin()) return true;
   if(isSalesman() && p && p.salesmanId===currentUser.uid) return true;
+  if(isEOCoordinator() && p && p.projectType==='EO') return true;
   return false;
 }
 /* the quotation/PO/BQ itself — hidden specifically from LAP Coordinators,
-   even though they can see everything else about the project */
-function canSeeSourceDocs(){ return !isLapCoordinator(); }
-/* only admins/engineers create projects and assign a salesman */
+   even though they can see everything else about the project. EO
+   Coordinator always sees it on EO projects, even if (via a second role)
+   they also happen to be a LAP Coordinator elsewhere. */
+function canSeeSourceDocs(p){
+  if(isEOCoordinator() && p && p.projectType==='EO') return true;
+  return !isLapCoordinator();
+}
+/* only admins/engineers/salesmen create projects and assign a salesman */
 function canCreateProjects(){ return isAdmin() || isEngineer() || isSalesman(); }
 /* project visibility is the UNION of whatever each held role grants */
 function canSeeProject(p){
@@ -579,12 +600,13 @@ function canSeeProject(p){
   var ok=false;
   if(isSalesman() && p.salesmanId===currentUser.uid) ok=true;
   if(isLapCoordinator() && p.projectType==='LAP') ok=true;
+  if(isEOCoordinator() && p.projectType==='EO') ok=true;
   return ok;
 }
 function visibleProjectIds(){
   var s={}; Object.values(state.projects).forEach(function(p){ if(canSeeProject(p)) s[p.id]=1; }); return s;
 }
-var ROLES = [['admin','Admin'],['engineer','Project Engineer'],['salesman','Salesman'],['lapCoordinator','LAP Coordinator']];
+var ROLES = [['admin','Admin'],['engineer','Project Engineer'],['salesman','Salesman'],['lapCoordinator','LAP Coordinator'],['eoCoordinator','EO Coordinator']];
 function roleLabel(r){ var f=ROLES.filter(function(x){return x[0]===r;})[0]; return f?f[1]:r; }
 function rolesLabel(roles){ roles=roles||[]; return roles.length? roles.map(roleLabel).join(', ') : 'No access'; }
 function userLabel(u){ return (u && (u.name || (u.email||'').split('@')[0])) || '—'; }
@@ -1338,7 +1360,7 @@ function renderProjects(){
     '<div class="toolbar">' +
       '<select id="projFilterSel">' + ['all','planning','in-progress','delayed','on-hold','completed'].map(function(s){
         return '<option value="'+s+'"'+(projFilter===s?' selected':'')+'>'+(s==='all'?'All statuses':statusLabel(s))+'</option>'; }).join('') + '</select>' +
-      '<select id="projTypeFilterSel">' + ['all','STP','LAP','Others'].map(function(t){
+      '<select id="projTypeFilterSel">' + ['all','STP','LAP','EO','Others'].map(function(t){
         return '<option value="'+t+'"'+(projTypeFilter===t?' selected':'')+'>'+(t==='all'?'All types':t)+'</option>'; }).join('') + '</select>' +
       '<input type="search" id="projSearch" placeholder="Search projects…">' +
       (canCreateProjects()?'<button class="btn btn-add spacer" id="addProjBtn">+ New Project</button>':'') +
@@ -1360,7 +1382,7 @@ function renderProjectGrid(){
     return true;
   });
   if(!list.length){ grid.innerHTML='<div class="empty-state">'+
-    ((isSalesman()||isLapCoordinator())?'No projects have been assigned to you yet.'
+    ((isSalesman()||isLapCoordinator()||isEOCoordinator())?'No projects have been assigned to you yet.'
                  :'No projects yet. Click “+ New Project” to add one.')+'</div>'; return; }
   grid.innerHTML=list.map(projectCardHTML).join('');
   wireProjectCards(grid, 'overview');
@@ -1372,7 +1394,7 @@ function projectCardHTML(p){
   var prog=projectProgress(p); var its=projectItems(p.id);
   var done=its.filter(function(t){ return (Number(t.percent)||0)>=100; }).length;
   var cv=contractValue(p.id);
-  var docCount=projectDocs(p.id).filter(function(d){ return canSeeSourceDocs() || !d.source; }).length;
+  var docCount=projectDocs(p.id).filter(function(d){ return canSeeSourceDocs(p) || !d.source; }).length;
   return '<div class="project-card" data-id="'+p.id+'">'+
     '<div class="pc-top"><div><div class="pc-name">'+esc(p.name)+'</div>'+
       (p.client||p.site?'<div class="pc-site">'+esc([p.client,p.site].filter(Boolean).join(' • '))+'</div>':'')+
@@ -1411,7 +1433,7 @@ function openProjectForm(p){
       field('Project Name','pfName',p.name,'text',true,!isNew)+
       '<div class="field"><label>Project Type *</label><select id="pfType">'+
         '<option value=""'+(p.projectType?'':' selected')+' disabled>— select type —</option>'+
-        ['STP','LAP','Others'].map(function(t){ return '<option value="'+t+'"'+(p.projectType===t?' selected':'')+'>'+t+'</option>'; }).join('')+
+        ['STP','LAP','EO','Others'].map(function(t){ return '<option value="'+t+'"'+(p.projectType===t?' selected':'')+'>'+t+'</option>'; }).join('')+
         '</select></div>'+
       selField('Status','pfStatus',['planning','in-progress','delayed','on-hold','completed'],p.status||'planning')+
       field('Client','pfClient',p.client)+
@@ -1572,7 +1594,7 @@ function detailOverview(p){
   var prog=projectProgress(p); var its=projectItems(p.id); var cv=contractValue(p.id);
   var done=its.filter(function(t){ return (Number(t.percent)||0)>=100; }).length;
   var ms=p.milestones||[];
-  var srcDocs=canSeeSourceDocs()? projectDocs(p.id).filter(function(d){ return d.source; }) : [];
+  var srcDocs=canSeeSourceDocs(p)? projectDocs(p.id).filter(function(d){ return d.source; }) : [];
   return '<div class="mini-toolbar"><div style="font-size:13px;color:#7a8bb0">'+fmtDate(p.startDate)+' → '+fmtDate(p.endDate)+'</div>'+
       (canEdit(p)?'<button class="btn btn-secondary btn-sm" data-edit-proj>Edit Project</button>':'')+'</div>'+
     '<div class="progress-big"><div class="pf" style="width:'+prog+'%"></div></div>'+
@@ -1733,7 +1755,7 @@ function renderWorkDoneResults(){
   var cardsHTML = projs.map(projectCardHTML).join('') + (unrep.rows.length? unassignedCardHTML(unrep) : '');
   wrap.innerHTML = cardsHTML
     ? '<div class="project-grid">'+cardsHTML+'</div>'
-    : '<div class="empty-state">'+((isSalesman()||isLapCoordinator())?'No projects have been assigned to you yet.':'No projects yet.')+'</div>';
+    : '<div class="empty-state">'+((isSalesman()||isLapCoordinator()||isEOCoordinator())?'No projects have been assigned to you yet.':'No projects yet.')+'</div>';
   wireProjectCards(wrap, 'workdone');
   var u=document.getElementById('wdUnassignedCard');
   if(u) u.addEventListener('click', openUnassignedWorkDone);
@@ -1778,7 +1800,7 @@ function renderDetailItemsWrap(p){
   if(detailItemsHideDone) its=its.filter(function(it){ return (Number(it.percent)||0)<100; });
   if(detailItemsSearch) its=its.filter(function(it){ return ((it.description||'')+' '+(it.section||'')).toLowerCase().includes(detailItemsSearch); });
   var money=canSeePrice(p);
-  var srcDoc=canSeeSourceDocs()? projectDocs(p.id).filter(function(d){ return d.source; })[0] : null;
+  var srcDoc=canSeeSourceDocs(p)? projectDocs(p.id).filter(function(d){ return d.source; })[0] : null;
   wrap.innerHTML = sectionLegendHTML(allIts, detailItemsSectionFilter)+
     (its.length?
       '<table class="item-table"><thead><tr><th style="width:52px">No.</th><th>Description</th><th class="num-col">Qty</th><th>Unit</th>'+
@@ -1847,7 +1869,7 @@ function folderBar(p, kind){
 function detailDocuments(p){
   var cur=docFolderId;
   var docs=recordsInFolder('documents',p.id,cur)
-    .filter(function(d){ return canSeeSourceDocs() || !d.source; })   // hide the quotation/PO/BQ from LAP Coordinators
+    .filter(function(d){ return canSeeSourceDocs(p) || !d.source; })   // hide the quotation/PO/BQ from LAP Coordinators
     .sort(function(a,b){ return (b.uploadedAt||'')<(a.uploadedAt||'')?-1:1; });
   var hasSub=subFolders(p.id,'doc',cur).length;
   return folderBar(p,'doc')+folderCrumb(p,'doc')+
@@ -1903,11 +1925,6 @@ function wireDetailActions(p){
 }
 
 /* ---------- milestones ---------- */
-function daysUntil(dateStr){
-  if(!dateStr) return null;
-  var d=Math.round((new Date(dateStr+'T00:00:00') - new Date(todayISO()+'T00:00:00'))/86400000);
-  return isNaN(d)? null : d;
-}
 function milestoneDaysHTML(m){
   if(m.done) return '<span class="ms-days done">Done</span>';
   var d=daysUntil(m.date);
@@ -2253,7 +2270,7 @@ function showExtractPreview(p, items, sourceLabel){
 function renderItemsView(){
   var el=document.getElementById('view-items');
   var projs=sortedProjects();
-  if(!projs.length){ el.innerHTML='<div class="empty-state">'+((isSalesman()||isLapCoordinator())?'No projects have been assigned to you yet.':'No projects yet.')+'</div>'; return; }
+  if(!projs.length){ el.innerHTML='<div class="empty-state">'+((isSalesman()||isLapCoordinator()||isEOCoordinator())?'No projects have been assigned to you yet.':'No projects yet.')+'</div>'; return; }
   el.innerHTML='<div class="project-grid">'+projs.map(projectCardHTML).join('')+'</div>';
   wireProjectCards(el, 'items');
 }
@@ -2275,7 +2292,7 @@ function renderDocuments(){
   el.innerHTML=
     (FB_ENABLED?'':'<div class="panel" style="border-color:#5c3a10"><div style="color:#f5b041;font-size:13px">⚠ Local mode — uploaded files are stored in this browser only and are <b>not shared</b>. Connect Firebase for real cloud uploads + AI item extraction.</div></div>')+
     (projs.length? '<div class="project-grid">'+projs.map(projectCardHTML).join('')+'</div>'
-      : '<div class="empty-state">'+((isSalesman()||isLapCoordinator())?'No projects have been assigned to you yet.':'No projects yet.')+'</div>');
+      : '<div class="empty-state">'+((isSalesman()||isLapCoordinator()||isEOCoordinator())?'No projects have been assigned to you yet.':'No projects yet.')+'</div>');
   wireProjectCards(el, 'documents');
 }
 function wireDocUpload(pid){
@@ -2369,10 +2386,11 @@ function claimTotals(claim){
    Project column and made scanning harder than just choosing up front. */
 function renderClaims(){
   var el=document.getElementById('view-claims');
-  if(!isAdmin() && !isSalesman()){ el.innerHTML='<div class="empty-state">Progress claims are not available for your role.</div>'; return; }
+  if(!isAdmin() && !isSalesman() && !isEOCoordinator()){ el.innerHTML='<div class="empty-state">Progress claims are not available for your role.</div>'; return; }
   // only projects THIS user has price rights on — e.g. a salesman who is also
   // a LAP Coordinator sees LAP projects overall, but not their claims unless
-  // that specific project is assigned to them as salesman
+  // that specific project is assigned to them as salesman; an EO Coordinator
+  // sees claims for every EO project outright, no per-project assignment needed
   var priceProjs=sortedProjects().filter(function(p){ return canSeePrice(p); });
   el.innerHTML=
     (priceProjs.length?'<div class="toolbar"><button class="btn btn-add spacer" id="newClaimBtn">+ New Claim</button></div>':'')+
@@ -2389,7 +2407,7 @@ function detailClaims(p){
   var pays=canPay? projectPayments(p.id) : [];
   var payTotal=pays.reduce(function(s,x){ return s+(Number(x.amount)||0); }, 0);
   return '<div class="mini-toolbar"><div style="font-size:12px;color:#7a8bb0">'+cs.length+' claim(s)</div>'+
-      (canEdit()?'<button class="btn btn-add btn-sm" data-new-claim>+ New Claim</button>':'')+'</div>'+
+      (canEdit(p)?'<button class="btn btn-add btn-sm" data-new-claim>+ New Claim</button>':'')+'</div>'+
     (cs.length?
       '<table class="item-table"><thead><tr><th style="width:70px">Claim</th><th>Date</th><th class="amt">To Date</th><th class="amt">This Claim</th><th class="amt">Net Due</th></tr></thead><tbody>'+
       cs.map(function(c){
@@ -3114,6 +3132,7 @@ function renderUsers(){
       '<b>Project Engineer</b> edits everything but never sees rates, values or claims. '+
       '<b>Salesman</b> sees only their assigned projects, with full price/claim visibility on those. '+
       '<b>LAP Coordinator</b> sees every project of type LAP, can update % complete and upload photos/documents, but never sees rates, values, claims or the source PO/BQ/quotation. '+
+      '<b>EO Coordinator</b> sees every project of type EO with full access — editing, rates, values, claims and the source PO/BQ/quotation, same as an admin but scoped to EO projects only. '+
       'No boxes checked = No access.</div>'+
     '<table class="item-table"><thead><tr><th style="width:190px">Name</th><th>Email</th>'+
       ROLES.map(function(r){ return '<th style="width:110px;text-align:center">'+r[1]+'</th>'; }).join('')+
@@ -3283,7 +3302,7 @@ function startApp(){
   document.getElementById('loginWrap').classList.remove('show');
   document.querySelectorAll('.admin-only').forEach(function(e){ e.style.display=isAdmin()?'flex':'none'; });
   // Claims involve money — only shown to roles that can ever see price on some project
-  document.querySelectorAll('.money-only').forEach(function(e){ e.style.display=(isAdmin()||isSalesman())?'flex':'none'; });
+  document.querySelectorAll('.money-only').forEach(function(e){ e.style.display=(isAdmin()||isSalesman()||isEOCoordinator())?'flex':'none'; });
   document.getElementById('userName').addEventListener('click', editMyName);
   switchView('dashboard');
 }

@@ -101,14 +101,15 @@ function requirePmStoragePath(storagePath) {
    with AI" button is hidden from LAP Coordinators in the UI, but that's not
    real access control on its own (anyone could call this function directly).
    Enforce the same rule server-side: only proceed for a role that's allowed
-   to see the source document at all. */
+   to see the source document at all. EO Coordinator gets full access
+   (including source docs) on EO projects, so it's allowed here too. */
 async function requireSourceDocAccess(uid) {
   const snap = await admin.database().ref('pm/users/' + uid).once('value');
   const rec = snap.val();
   const roles = Array.isArray(rec && rec.roles) ? rec.roles
     : (rec && rec.role && rec.role !== 'lapCoordinator' && rec.role !== 'pending' && rec.role !== 'view') ? [rec.role]
     : [];
-  const allowed = roles.some(r => r === 'admin' || r === 'engineer' || r === 'salesman');
+  const allowed = roles.some(r => r === 'admin' || r === 'engineer' || r === 'salesman' || r === 'eoCoordinator');
   if (!allowed) {
     throw new HttpsError('permission-denied', 'Your role does not have access to source documents.');
   }
