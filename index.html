@@ -95,6 +95,8 @@ button.btn{padding:8px 16px;border:none;border-radius:6px;cursor:pointer;font-si
 .stat-card .lbl{font-size:11px;color:#7a8bb0;margin-top:2px}
 .stat-card.alert .num{color:#e94560}
 .stat-card.good .num{color:#5dfc8d}
+.stat-card.clickable{cursor:pointer}
+.stat-card.clickable:hover{border-color:#e94560}
 .stat-card.money .num{color:#4fc3f7}
 @media (max-width:640px){.stat-row{grid-template-columns:repeat(2,1fr)}}
 
@@ -1319,7 +1321,7 @@ function renderDashboard(){
 
   el.innerHTML =
     '<div class="stat-row">' +
-      statCard(active.length,'Active Projects') +
+      statCard(active.length,'Active Projects','','projects') +
       statCard(overdue.length,'Overdue', overdue.length?'alert':'') +
       statCard(avg+'%','Avg Completion','good') +
       statCard(openItems.length,'Open Items') +
@@ -1347,8 +1349,13 @@ function renderDashboard(){
   el.querySelectorAll('[data-open-proj]').forEach(function(r){
     r.addEventListener('click', function(){ switchView('projects'); setTimeout(function(){ openProjectDetail(r.dataset.openProj); },30); });
   });
+  el.querySelectorAll('[data-stat-nav]').forEach(function(c){
+    c.addEventListener('click', function(){ switchView(c.dataset.statNav); });
+  });
 }
-function statCard(num,lbl,cls){ return '<div class="stat-card '+(cls||'')+'"><div class="num">'+num+'</div><div class="lbl">'+lbl+'</div></div>'; }
+function statCard(num,lbl,cls,navView){
+  return '<div class="stat-card '+(cls||'')+(navView?' clickable':'')+'"'+(navView?' data-stat-nav="'+navView+'"':'')+'><div class="num">'+num+'</div><div class="lbl">'+lbl+'</div></div>';
+}
 
 /* =====================================================================
    PROJECTS
