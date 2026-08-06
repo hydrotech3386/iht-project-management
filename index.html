@@ -2474,7 +2474,7 @@ function newClaimFlow(presetPid){
       '<div class="field full"><label>Notes</label><textarea id="ncNotes" placeholder="Optional remarks shown on the claim"></textarea></div>'+
       '<div class="field full"><label>Progress Photos (optional)</label>'+
         '<div class="dropzone" id="ncPhotoDrop">Drop photos here or <b>click to add</b>'+
-          '<input type="file" id="ncPhotoInput" accept="image/*" multiple capture="environment" style="display:none"></div>'+
+          '<input type="file" id="ncPhotoInput" accept="image/*" multiple style="display:none"></div>'+
         '<div class="photo-grid" id="ncPhotoPreview"></div>'+
         '<div id="ncExistingWrap" style="margin-top:10px"></div>'+
       '</div>'+
@@ -2628,7 +2628,7 @@ function openClaim(id){
     (c.notes?'<div class="panel" style="margin-top:12px"><h3>Notes</h3><div style="font-size:13px;white-space:pre-wrap;color:#ccd3e0">'+esc(c.notes)+'</div></div>':'')+
     '<div class="panel" style="margin-top:12px"><h3>Progress Photos</h3>'+
       (canOperate(p)?'<div class="dropzone" id="clPhotoDrop">Drop photos here or <b>click to add</b>'+
-        '<input type="file" id="clPhotoInput" accept="image/*" multiple capture="environment" style="display:none"></div>'+
+        '<input type="file" id="clPhotoInput" accept="image/*" multiple style="display:none"></div>'+
         '<button class="btn btn-secondary btn-sm" id="clPickExisting" style="margin-bottom:12px">📁 Select from Project Photos</button>':'')+
       (phs.length?'<div class="photo-grid">'+phs.map(function(x){return photoCardHTML(x,true,false,true);}).join('')+'</div>'
                 :'<div class="empty-state" style="padding:16px 0">No progress photos attached.</div>')+
@@ -3051,7 +3051,7 @@ function openItemPhotos(itemId){
     '<div class="modal-head"><div><h2>Item Photos</h2><div class="sub">'+esc(it.description||'')+'</div></div>'+
       '<button class="modal-close" data-close>&times;</button></div>'+
     (canOperate(state.projects[it.projectId])?'<div class="dropzone" id="phDrop">Drop photos here or <b>click to add</b>'+
-      '<input type="file" id="phInput" accept="image/*" multiple capture="environment" style="display:none"></div>':'')+
+      '<input type="file" id="phInput" accept="image/*" multiple style="display:none"></div>':'')+
     (phs.length?'<div class="photo-grid" id="phGrid">'+phs.map(function(p){return photoCardHTML(p,false);}).join('')+'</div>'
               :'<div class="empty-state" style="padding:24px 0">No photos for this item yet.</div>')
   );
@@ -3112,7 +3112,7 @@ function detailPhotos(p){
     '<div class="panel"><div class="field" style="margin-bottom:8px"><label>Link photos to item (optional)</label><select id="phItemSel">'+opts+'</select></div>'+
     '<div class="field" style="margin-bottom:8px"><label>Caption (optional)</label><input type="text" id="phCap" placeholder="e.g. Pump installed at wet well"></div>'+
     '<div class="dropzone" id="phDropP" style="margin-bottom:0">Drop photos here or <b>click to add</b> into this folder'+
-      '<input type="file" id="phInputP" accept="image/*" multiple capture="environment" style="display:none"></div></div>':'')+
+      '<input type="file" id="phInputP" accept="image/*" multiple style="display:none"></div></div>':'')+
     folderCards(p,'photo')+
     (phs.length?'<div class="photo-grid">'+phs.map(function(x){return photoCardHTML(x,true,true);}).join('')+'</div>'
               :(hasSub?'':'<div class="empty-state" style="padding:24px 0">No photos in this folder.</div>'));
