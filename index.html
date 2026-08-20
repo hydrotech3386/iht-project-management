@@ -175,8 +175,13 @@ button.btn{padding:8px 16px;border:none;border-radius:6px;cursor:pointer;font-si
 .pct-cell{display:flex;align-items:center;gap:8px;min-width:150px}
 .pct-input{width:56px;background:#0f3460;border:1px solid #23325a;color:#fff;border-radius:6px;padding:5px 6px;font-size:13px;text-align:right}
 .pct-bar{flex:1;display:block;background:#0f3460;border-radius:5px;height:8px;overflow:hidden;min-width:50px}
+.pct-bar.editable{cursor:pointer}
+.pct-bar.editable:hover{box-shadow:inset 0 0 0 1px #4fc3f7}
 .pct-fill{display:block;height:100%;background:#f5b041}
 .pct-fill.done{background:#27ae60}
+.pct-preset-pop{position:fixed;z-index:3000;background:#16213e;border:1px solid #23325a;border-radius:8px;padding:6px;display:none;gap:4px;box-shadow:0 6px 18px rgba(0,0,0,.4)}
+.pct-preset-pop button{background:#0f3460;border:1px solid #23325a;color:#fff;border-radius:5px;padding:5px 9px;font-size:12px;font-weight:600;cursor:pointer;white-space:nowrap}
+.pct-preset-pop button:hover{background:#1a2440;border-color:#4fc3f7;color:#4fc3f7}
 .progress-big{background:#0f3460;border-radius:8px;height:14px;overflow:hidden}
 .progress-big .pf{height:100%;background:#27ae60;transition:width .3s}
 
@@ -1822,7 +1827,7 @@ function renderDetailItemsWrap(p){
           '<td>'+esc(it.unit||'')+'</td>'+
           (money?'<td class="amt">'+(it.amount?fmtRM(it.amount):'')+'</td>':'')+
           '<td><div class="pct-cell"><input type="number" class="pct-input" min="0" max="100" value="'+pct+'" data-pct="'+it.id+'"'+(canOperate(p)?'':' readonly')+'>'+
-            '<span class="pct-bar"><span class="pct-fill'+(pct>=100?' done':'')+'" style="width:'+pct+'%"></span></span></div></td>'+
+            '<span class="pct-bar'+(canOperate(p)?' editable':'')+'"'+(canOperate(p)?' data-pct-bar="'+it.id+'"':'')+' title="'+(canOperate(p)?'Click or drag to set %':'')+'"><span class="pct-fill'+(pct>=100?' done':'')+'" style="width:'+pct+'%"></span></span></div></td>'+
           '<td><button class="btn-photo'+(np?' has':'')+'" data-item-photos="'+it.id+'" title="Photos for this item">📷'+(np?'<span class="photo-count">'+np+'</span>':'')+'</button></td>'+
           (canEdit(p)?'<td><button class="btn btn-secondary btn-sm" data-edit-item="'+it.id+'">✎</button></td>':'')+
         '</tr>';
@@ -1836,13 +1841,83 @@ function renderDetailItemsWrap(p){
   }); });
   wrap.querySelectorAll('[data-edit-item]').forEach(function(b){ b.addEventListener('click', function(){ openItemForm(state.items[b.dataset.editItem]); }); });
   wrap.querySelectorAll('[data-pct]').forEach(function(inp){
-    inp.addEventListener('change', function(){
-      var it=state.items[inp.dataset.pct]; if(!it||!canOperate(p)) return;
-      var v=Math.max(0,Math.min(100, Math.round(Number(inp.value)||0)));
-      put('items', Object.assign({}, it, {percent:v})); renderDetailItemsWrap(p); renderCurrent();
+    inp.addEventListener('change', function(){ commitItemPercent(p, inp.dataset.pct, inp.value); });
+    if(canOperate(p)) inp.addEventListener('focus', function(){ showPctPresetPop(inp, p, inp.dataset.pct); });
+  });
+  wrap.querySelectorAll('[data-pct-bar]').forEach(function(bar){ wireDraggablePctBar(bar, p, bar.dataset.pctBar); });
+}
+/* shared by the number input, the click/drag-on-bar handler below, and the
+   preset-% popover, so all three ways of setting a value go through one
+   clamp+persist path */
+function commitItemPercent(p, itemId, value){
+  var it=state.items[itemId]; if(!it||!canOperate(p)) return;
+  var v=Math.max(0,Math.min(100, Math.round(Number(value)||0)));
+  put('items', Object.assign({}, it, {percent:v})); renderDetailItemsWrap(p); renderCurrent();
+}
+/* click-or-drag directly on the progress bar to set %, mouse and touch alike —
+   drag only updates the bar/input visually (cheap DOM writes) and persists
+   once on release, so a drag doesn't spam the database on every pixel moved */
+function wireDraggablePctBar(bar, p, itemId){
+  function pctFromEvent(e){
+    var rect=bar.getBoundingClientRect();
+    var clientX=(e.touches&&e.touches.length)? e.touches[0].clientX : e.clientX;
+    return Math.max(0, Math.min(100, Math.round(((clientX-rect.left)/rect.width)*100)));
+  }
+  function applyVisual(pct){
+    var fill=bar.querySelector('.pct-fill');
+    if(fill){ fill.style.width=pct+'%'; fill.classList.toggle('done', pct>=100); }
+    var row=bar.closest('tr'), inp=row&&row.querySelector('.pct-input');
+    if(inp) inp.value=pct;
+  }
+  function start(e){
+    e.preventDefault();
+    applyVisual(pctFromEvent(e));
+    function move(ev){ applyVisual(pctFromEvent(ev)); }
+    function end(ev){
+      document.removeEventListener('mousemove', move); document.removeEventListener('mouseup', end);
+      document.removeEventListener('touchmove', move); document.removeEventListener('touchend', end);
+      commitItemPercent(p, itemId, pctFromEvent(ev.changedTouches?{clientX:ev.changedTouches[0].clientX}:ev));
+    }
+    document.addEventListener('mousemove', move); document.addEventListener('mouseup', end);
+    document.addEventListener('touchmove', move, {passive:false}); document.addEventListener('touchend', end);
+  }
+  bar.addEventListener('mousedown', start);
+  bar.addEventListener('touchstart', start, {passive:false});
+}
+/* ---------- preset-% popover for the pct-input key-in box ---------- */
+var pctPresetTarget=null;
+function ensurePctPresetPop(){
+  var pop=document.getElementById('pctPresetPop');
+  if(pop) return pop;
+  pop=document.createElement('div');
+  pop.id='pctPresetPop'; pop.className='pct-preset-pop';
+  pop.innerHTML=[25,50,75,90,100].map(function(v){ return '<button type="button" data-preset="'+v+'">'+v+'%</button>'; }).join('');
+  document.body.appendChild(pop);
+  pop.addEventListener('mousedown', function(e){ e.preventDefault(); }); // keep the input focused so no blur races the click
+  pop.querySelectorAll('[data-preset]').forEach(function(b){
+    b.addEventListener('click', function(){
+      if(pctPresetTarget) commitItemPercent(pctPresetTarget.p, pctPresetTarget.itemId, +b.dataset.preset);
+      hidePctPresetPop();
     });
   });
+  return pop;
 }
+function showPctPresetPop(inputEl, p, itemId){
+  var pop=ensurePctPresetPop();
+  pctPresetTarget={p:p, itemId:itemId};
+  var r=inputEl.getBoundingClientRect();
+  pop.style.left=r.left+'px'; pop.style.top=(r.bottom+4)+'px'; pop.style.display='flex';
+}
+function hidePctPresetPop(){
+  var pop=document.getElementById('pctPresetPop');
+  if(pop) pop.style.display='none';
+  pctPresetTarget=null;
+}
+document.addEventListener('mousedown', function(e){
+  var pop=document.getElementById('pctPresetPop');
+  if(!pop || pop.style.display==='none' || pop.contains(e.target) || e.target.classList.contains('pct-input')) return;
+  hidePctPresetPop();
+});
 /* ---------- shared folder chrome (used by both Documents and Photos) ---------- */
 function folderCrumb(p, kind){
   var cur=curFolder(kind), path=cur?folderPath(cur):[];
