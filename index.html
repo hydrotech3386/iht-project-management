@@ -1583,7 +1583,7 @@ function openProjectDetail(id, tab){
   var p=state.projects[id]; if(!p) return;
   if(!canSeeProject(p)){ toast('That project is not assigned to you','err'); return; }
   detailProjId=id; detailTab=tab||'overview'; docFolderId=''; photoFolderId='';
-  detailItemsSectionFilter=''; detailItemsSearch=''; detailItemsHideDone=false; detailWorkDoneMonth='';
+  detailItemsSectionFilter=''; detailItemsSearch=''; detailItemsHideDone=false; detailWorkDoneMonth=''; detailItemsSelected={};
   renderProjectDetail();
 }
 function curProj(){ return state.projects[detailProjId]; }
@@ -1637,6 +1637,7 @@ function detailOverview(p){
     '</div>';
 }
 var detailItemsSectionFilter='', detailItemsSearch='', detailItemsHideDone=false;
+var detailItemsSelected={}; // itemId -> true, for bulk "Set Section" on the Items tab
 /* the search box and hide-completed checkbox live in this static shell, which
    is only rendered once per tab-entry; the actual list lives in a nested
    #detailItemsWrap that renderDetailItemsWrap() alone rebuilds on every
@@ -1823,14 +1824,33 @@ function renderDetailItemsWrap(p){
   if(detailItemsSearch) its=its.filter(function(it){ return ((it.description||'')+' '+(it.section||'')).toLowerCase().includes(detailItemsSearch); });
   var money=canSeePrice(p);
   var srcDoc=canSeeSourceDocs(p)? projectDocs(p.id).filter(function(d){ return d.source; })[0] : null;
+  var editable=canEdit(p);
+  // drop selections for items no longer visible under the current filter, so the
+  // bulk bar's count and "select all" checkbox always reflect only what's on screen
+  if(editable){
+    var visibleIds={}; its.forEach(function(it){ visibleIds[it.id]=1; });
+    Object.keys(detailItemsSelected).forEach(function(id){ if(!visibleIds[id]) delete detailItemsSelected[id]; });
+  }
+  var selCount=Object.keys(detailItemsSelected).length;
+  var allVisibleSelected = its.length>0 && its.every(function(it){ return detailItemsSelected[it.id]; });
+  var sectionOptions=Array.from(new Set(allIts.map(function(it){ return it.section; }).filter(Boolean)));
   wrap.innerHTML = sectionLegendHTML(allIts, detailItemsSectionFilter)+
+    (editable && selCount? '<div class="mini-toolbar" style="background:#0f3460;border-radius:8px;padding:8px 10px;margin-bottom:10px">'+
+        '<div style="font-size:12px;color:#ccd3e0">'+selCount+' item(s) selected</div>'+
+        '<div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center">'+
+          '<input type="text" id="bulkSectionInput" list="bulkSectionList" placeholder="Section name…" style="background:#16213e;border:1px solid #23325a;color:#fff;border-radius:6px;padding:6px 8px;font-size:13px">'+
+          '<datalist id="bulkSectionList">'+sectionOptions.map(function(s){ return '<option value="'+esc(s)+'">'; }).join('')+'</datalist>'+
+          '<button class="btn btn-primary btn-sm" id="bulkApplySectionBtn">Set Section</button>'+
+          '<button class="btn btn-secondary btn-sm" id="bulkClearSelBtn">Clear Selection</button>'+
+        '</div></div>' : '')+
     (its.length?
-      '<table class="item-table"><thead><tr><th style="width:52px">No.</th><th>Description</th><th class="num-col">Qty</th><th>Unit</th>'+
+      '<table class="item-table"><thead><tr>'+(editable?'<th style="width:24px"><input type="checkbox" id="diSelectAll"'+(allVisibleSelected?' checked':'')+' title="Select all"></th>':'')+'<th style="width:52px">No.</th><th>Description</th><th class="num-col">Qty</th><th>Unit</th>'+
         (money?'<th class="amt">Value</th>':'')+
-        '<th style="width:170px">% Complete</th><th style="width:44px">Photos</th>'+(canEdit(p)?'<th style="width:40px"></th>':'')+'</tr></thead><tbody>'+
+        '<th style="width:170px">% Complete</th><th style="width:44px">Photos</th>'+(editable?'<th style="width:40px"></th>':'')+'</tr></thead><tbody>'+
       its.map(function(it,idx){
         var pct=Number(it.percent)||0; var np=itemPhotos(it.id).length; var scol=sectionColor(it.section);
         return '<tr data-item="'+it.id+'">'+
+          (editable?'<td><input type="checkbox" class="row-select" data-select-item="'+it.id+'"'+(detailItemsSelected[it.id]?' checked':'')+'></td>':'')+
           '<td class="num-col"'+(scol?' style="border-left:3px solid '+scol+'"':'')+'>'+(it.no?esc(it.no):'<span style="color:#5a6785" title="No item number set">—</span>')+'</td>'+
           '<td class="item-desc">'+esc(it.description||'')+(it.section?'<div style="font-size:11px;color:'+scol+'">'+esc(it.section)+'</div>':'')+'</td>'+
           '<td class="num-col">'+(it.qty!=null&&it.qty!==''?fmtNum(it.qty):'')+'</td>'+
@@ -1839,7 +1859,7 @@ function renderDetailItemsWrap(p){
           '<td><div class="pct-cell"><input type="number" class="pct-input" min="0" max="100" value="'+pct+'" data-pct="'+it.id+'"'+(canOperate(p)?'':' readonly')+'>'+
             '<span class="pct-bar'+(canOperate(p)?' editable':'')+'"'+(canOperate(p)?' data-pct-bar="'+it.id+'"':'')+' title="'+(canOperate(p)?'Click or drag to set %':'')+'"><span class="pct-fill'+(pct>=100?' done':'')+'" style="width:'+pct+'%"></span></span></div></td>'+
           '<td><button class="btn-photo'+(np?' has':'')+'" data-item-photos="'+it.id+'" title="Photos for this item">📷'+(np?'<span class="photo-count">'+np+'</span>':'')+'</button></td>'+
-          (canEdit(p)?'<td><button class="btn btn-secondary btn-sm" data-edit-item="'+it.id+'">✎</button></td>':'')+
+          (editable?'<td><button class="btn btn-secondary btn-sm" data-edit-item="'+it.id+'">✎</button></td>':'')+
         '</tr>';
       }).join('')+'</tbody></table>'
     : (allIts.length? '<div class="empty-state" style="padding:24px 0">No items match.</div>'
@@ -1855,6 +1875,29 @@ function renderDetailItemsWrap(p){
     if(canOperate(p)) inp.addEventListener('focus', function(){ showPctPresetPop(inp, p, inp.dataset.pct); });
   });
   wrap.querySelectorAll('[data-pct-bar]').forEach(function(bar){ wireDraggablePctBar(bar, p, bar.dataset.pctBar); });
+  wrap.querySelectorAll('[data-select-item]').forEach(function(cb){
+    cb.addEventListener('change', function(){
+      if(cb.checked) detailItemsSelected[cb.dataset.selectItem]=true; else delete detailItemsSelected[cb.dataset.selectItem];
+      renderDetailItemsWrap(p);
+    });
+  });
+  var selAll=document.getElementById('diSelectAll');
+  if(selAll) selAll.addEventListener('change', function(){
+    its.forEach(function(it){ if(selAll.checked) detailItemsSelected[it.id]=true; else delete detailItemsSelected[it.id]; });
+    renderDetailItemsWrap(p);
+  });
+  var clearBtn=document.getElementById('bulkClearSelBtn');
+  if(clearBtn) clearBtn.addEventListener('click', function(){ detailItemsSelected={}; renderDetailItemsWrap(p); });
+  var applyBtn=document.getElementById('bulkApplySectionBtn');
+  if(applyBtn) applyBtn.addEventListener('click', function(){
+    var val=document.getElementById('bulkSectionInput').value.trim();
+    if(!val){ toast('Type a section name first','err'); return; }
+    var ids=Object.keys(detailItemsSelected);
+    ids.forEach(function(id){ var it=state.items[id]; if(it) put('items', Object.assign({}, it, {section:val})); });
+    detailItemsSelected={};
+    toast('Section set on '+ids.length+' item(s)','ok');
+    renderDetailItemsWrap(p);
+  });
 }
 /* shared by the number input, the click/drag-on-bar handler below, and the
    preset-% popover, so all three ways of setting a value go through one
