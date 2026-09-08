@@ -2292,6 +2292,7 @@ function showExtractPreview(p, items, sourceLabel){
     var amt=(it.amount!=null&&it.amount!=='')? it.amount : ((it.qty!=null&&it.qty!==''&&it.rate!=null&&it.rate!=='')? round2(it.qty*it.rate) : '');
     return '<tr data-row="'+i+'"'+(amt===''?' class="no-value"':'')+'>'+
       '<td><input type="text" data-f="no" value="'+esc(it.no||'')+'" style="width:54px;background:#0f3460;border:1px solid #23325a;color:#fff;border-radius:6px;padding:6px" title="Item number/code from the document"></td>'+
+      '<td><input type="text" data-f="section" value="'+esc(it.section||'')+'" placeholder="—" style="width:140px;background:#0f3460;border:1px solid #23325a;color:#fff;border-radius:6px;padding:6px" title="Section/trade heading this item sits under"></td>'+
       '<td><input type="text" data-f="description" value="'+esc(it.description||'')+'" style="width:100%;background:#0f3460;border:1px solid #23325a;color:#fff;border-radius:6px;padding:6px"></td>'+
       '<td><input type="number" data-f="qty" value="'+(it.qty==null?'':it.qty)+'" '+inp(66)+'></td>'+
       '<td><input type="text" data-f="unit" value="'+esc(it.unit||'')+'" style="width:60px;background:#0f3460;border:1px solid #23325a;color:#fff;border-radius:6px;padding:6px"></td>'+
@@ -2306,7 +2307,7 @@ function showExtractPreview(p, items, sourceLabel){
     '<div class="extract-note">No. is the item number as printed in the document, so it lines up with the BQ/PO/quotation. Amount is read directly from the document\'s Amount/Total column, independent of Rate — a blank Rate with a filled Amount is normal for lump-sum items. Check the highlighted rows'+(noValueCount?' ('+noValueCount+' with no value found)':'')+' — that usually means the source genuinely has no price there.'+
       (existing.length? '<br><br><b>This project already has '+existing.length+' item(s).</b> Use <b>Update Item Numbers</b> to backfill numbers on those without creating duplicates — it matches by description and only touches the No. field, nothing else. Use <b>Add as New Items</b> only if this document is genuinely additional scope.' : '')+
       '</div>'+
-    '<div style="max-height:52vh;overflow:auto"><table class="item-table"><thead><tr><th>No.</th><th>Description</th><th>Qty</th><th>Unit</th>'+(money?'<th>Rate</th><th>Amount</th>':'')+'<th></th></tr></thead><tbody id="exBody">'+rows+'</tbody></table></div>'+
+    '<div style="max-height:52vh;overflow:auto"><table class="item-table"><thead><tr><th>No.</th><th>Section</th><th>Description</th><th>Qty</th><th>Unit</th>'+(money?'<th>Rate</th><th>Amount</th>':'')+'<th></th></tr></thead><tbody id="exBody">'+rows+'</tbody></table></div>'+
     '<div class="modal-foot"><button class="btn btn-secondary" data-close>Cancel</button>'+
       (existing.length? '<button class="btn btn-primary" id="exUpdateNoBtn">Update Item Numbers on '+existing.length+' Existing Item(s)</button>':'')+
       '<button class="btn'+(existing.length?' btn-secondary':' btn-add')+'" id="exAddBtn">Add as '+items.length+' New Item(s)</button></div>', true
@@ -2344,7 +2345,7 @@ function showExtractPreview(p, items, sourceLabel){
       var qty=g('qty')===''?'':Number(g('qty')); var rate=g('rate')===''?'':Number(g('rate'));
       // amount comes from the document/review edit; only fall back to qty*rate if it was never given
       var amount=g('amount')===''? ((qty!==''&&rate!=='')?qty*rate:'') : Number(g('amount'));
-      put('items', { id:uid(), projectId:p.id, no:g('no'), description:desc, qty:qty, unit:g('unit'), rate:rate,
+      put('items', { id:uid(), projectId:p.id, no:g('no'), section:g('section'), description:desc, qty:qty, unit:g('unit'), rate:rate,
         amount:amount, percent:0, order:ord++, createdAt:Date.now() });
       n++;
     });
