@@ -1238,8 +1238,18 @@ var modalBackdrop=document.getElementById('modalBackdrop'), modalBox=document.ge
    on every close path — the × button, Cancel, Escape, and backdrop click —
    then clears itself so it never fires for an unrelated later modal */
 var modalCleanup=null;
-function openModal(html, wide){ modalCleanup=null; modalBox.className='modal'+(wide?' wide':''); modalBox.innerHTML=html; modalBackdrop.classList.add('open'); }
-function closeModal(){ if(modalCleanup){ try{ modalCleanup(); }catch(e){} modalCleanup=null; } modalBackdrop.classList.remove('open'); modalBox.innerHTML=''; }
+/* optional "go back" hook — set when a sub-modal (e.g. an item's photo
+   gallery) is opened on top of an already-open modal (the project detail
+   modal), so every close path lands back on the parent instead of falling
+   through to whatever page happens to be behind it. Cleared on every fresh
+   openModal() so the restored parent's own close button closes normally. */
+var modalReturnTo=null;
+function openModal(html, wide){ modalCleanup=null; modalReturnTo=null; modalBox.className='modal'+(wide?' wide':''); modalBox.innerHTML=html; modalBackdrop.classList.add('open'); }
+function closeModal(){
+  if(modalCleanup){ try{ modalCleanup(); }catch(e){} modalCleanup=null; }
+  if(modalReturnTo){ var back=modalReturnTo; modalReturnTo=null; back(); return; }
+  modalBackdrop.classList.remove('open'); modalBox.innerHTML='';
+}
 modalBackdrop.addEventListener('click', function(e){ if(e.target===modalBackdrop) closeModal(); });
 document.addEventListener('keydown', function(e){ if(e.key==='Escape') closeModal(); });
 
@@ -3137,6 +3147,9 @@ function openItemPhotos(itemId){
     (phs.length?'<div class="photo-grid" id="phGrid">'+phs.map(function(p){return photoCardHTML(p,false);}).join('')+'</div>'
               :'<div class="empty-state" style="padding:24px 0">No photos for this item yet.</div>')
   );
+  // opened over an already-open project detail modal — every close path (×,
+  // backdrop, Escape) should land back there, not on whatever page is behind it
+  if(detailProjId) modalReturnTo=function(){ renderProjectDetail(); };
   bindClose();
   wirePhotoCards(modalBox, function(){ openItemPhotos(itemId); });
   var drop=document.getElementById('phDrop');
