@@ -2278,7 +2278,7 @@ function readExtractRows(){
     var desc=g('description'); if(!desc) return;
     var qty=g('qty')===''?'':Number(g('qty')); var rate=g('rate')===''?'':Number(g('rate'));
     var amount=g('amount')===''? ((qty!==''&&rate!=='')?qty*rate:'') : Number(g('amount'));
-    out.push({ no:g('no'), description:desc, qty:qty, unit:g('unit'), rate:rate, amount:amount });
+    out.push({ no:g('no'), section:g('section'), description:desc, qty:qty, unit:g('unit'), rate:rate, amount:amount });
   });
   return out;
 }
@@ -2305,11 +2305,11 @@ function showExtractPreview(p, items, sourceLabel){
   openModal(
     '<div class="modal-head"><div><h2>Review Extracted Items</h2><div class="sub">'+items.length+' items from '+esc(sourceLabel)+' — edit or remove, then choose an action below.</div></div><button class="modal-close" data-close>&times;</button></div>'+
     '<div class="extract-note">No. is the item number as printed in the document, so it lines up with the BQ/PO/quotation. Amount is read directly from the document\'s Amount/Total column, independent of Rate — a blank Rate with a filled Amount is normal for lump-sum items. Check the highlighted rows'+(noValueCount?' ('+noValueCount+' with no value found)':'')+' — that usually means the source genuinely has no price there.'+
-      (existing.length? '<br><br><b>This project already has '+existing.length+' item(s).</b> Use <b>Update Item Numbers</b> to backfill numbers on those without creating duplicates — it matches by description and only touches the No. field, nothing else. Use <b>Add as New Items</b> only if this document is genuinely additional scope.' : '')+
+      (existing.length? '<br><br><b>This project already has '+existing.length+' item(s).</b> Use <b>Update Item Numbers &amp; Sections</b> to backfill those on the existing items without creating duplicates — it matches by description, only fills in a Section where one isn\'t already set (never overwrites one you\'ve already typed in), and touches nothing else (quantities, rates, values, % complete). Use <b>Add as New Items</b> only if this document is genuinely additional scope.' : '')+
       '</div>'+
     '<div style="max-height:52vh;overflow:auto"><table class="item-table"><thead><tr><th>No.</th><th>Section</th><th>Description</th><th>Qty</th><th>Unit</th>'+(money?'<th>Rate</th><th>Amount</th>':'')+'<th></th></tr></thead><tbody id="exBody">'+rows+'</tbody></table></div>'+
     '<div class="modal-foot"><button class="btn btn-secondary" data-close>Cancel</button>'+
-      (existing.length? '<button class="btn btn-primary" id="exUpdateNoBtn">Update Item Numbers on '+existing.length+' Existing Item(s)</button>':'')+
+      (existing.length? '<button class="btn btn-primary" id="exUpdateNoBtn">Update Item Numbers &amp; Sections on '+existing.length+' Existing Item(s)</button>':'')+
       '<button class="btn'+(existing.length?' btn-secondary':' btn-add')+'" id="exAddBtn">Add as '+items.length+' New Item(s)</button></div>', true
   );
   bindClose();
@@ -2319,18 +2319,21 @@ function showExtractPreview(p, items, sourceLabel){
   if(updBtn) updBtn.addEventListener('click', function(){
     var fresh=readExtractRows();
     if(!fresh.length){ toast('Nothing to match — the table is empty','err'); return; }
-    if(!confirm('Match these '+fresh.length+' extracted rows to your '+existing.length+' existing item(s) by description, and set their Item No. only. Quantities, rates, values, % complete and everything else stay exactly as they are. Continue?')) return;
+    if(!confirm('Match these '+fresh.length+' extracted rows to your '+existing.length+' existing item(s) by description, and set their Item No. and (where blank) Section. Quantities, rates, values, % complete and everything else stay exactly as they are. Continue?')) return;
     var matches=matchExistingToFresh(existing, fresh);
     var updated=0, unchanged=0, unresolved=0;
     existing.forEach(function(li, i){
       var match=matches[i];
-      if(!match || !match.no){ unresolved++; return; }
-      if(li.no===match.no){ unchanged++; return; }
-      put('items', Object.assign({}, li, {no:match.no}));
+      if(!match){ unresolved++; return; } // no confident description match at all
+      var patch={}, changed=false;
+      if(match.no && li.no!==match.no){ patch.no=match.no; changed=true; }
+      if(!li.section && match.section){ patch.section=match.section; changed=true; }
+      if(!changed){ unchanged++; return; } // matched fine, just nothing new to apply
+      put('items', Object.assign({}, li, patch));
       updated++;
     });
     closeModal();
-    toast('Updated numbers on '+updated+' item(s)'+
+    toast('Updated '+updated+' item(s)'+
       (unchanged?', '+unchanged+' already correct':'')+
       (unresolved?', '+unresolved+' had no confident match — check those manually':''), 'ok');
     if(detailProjId) renderProjectDetail(); else renderCurrent();
