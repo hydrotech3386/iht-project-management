@@ -345,6 +345,9 @@ button.btn{padding:8px 16px;border:none;border-radius:6px;cursor:pointer;font-si
 .cal-table{border-collapse:collapse;width:100%;font-size:12px}
 .cal-table th{background:#0f3460;color:#fff;padding:8px;text-align:center;font-size:12px;min-width:140px}
 .cal-table td{border:1px solid #1a2a4a;vertical-align:top;padding:6px;min-width:140px}
+.cal-table th.holiday-col{background:#5a3f0e;color:#f5b041}
+.cal-table td.holiday-col{background:#2a220c}
+.holiday-label-sm{font-size:10px;font-weight:700;color:#f5b041;margin-top:2px;white-space:normal}
 .cal-member{position:sticky;left:0;background:#16213e;font-weight:700;color:#fff;padding:8px 10px;white-space:nowrap;min-width:120px}
 .cal-chip{background:#0f3460;border-left:3px solid #2980b9;border-radius:4px;padding:4px 6px;font-size:11px;margin-bottom:4px;cursor:pointer}
 .cal-chip:hover{background:#1a3a5c}
@@ -892,17 +895,22 @@ function renderWeeklyGrid(){
   });
 
   var tableHTML = '<thead><tr><th class="cal-member" style="position:sticky;top:0;background:#0f3460">Member</th>'+
-    days.map(function(d){ return '<th>'+d.toLocaleDateString('en-GB',{weekday:'short'})+'<br>'+fmtShortD(d)+'</th>'; }).join('')+
+    days.map(function(d){
+      var hol=getHoliday(toISODate(d));
+      return '<th'+(hol?' class="holiday-col" title="'+esc(hol)+'"':'')+'>'+d.toLocaleDateString('en-GB',{weekday:'short'})+'<br>'+fmtShortD(d)+
+        (hol?'<div class="holiday-label-sm">🎌 '+esc(hol)+'</div>':'')+'</th>';
+    }).join('')+
     '</tr></thead><tbody>'+
     team.map(function(m){
       var rowHTML='<tr><td class="cal-member">'+esc(m.name)+'<div style="font-weight:400;color:#7a8bb0;font-size:10px">'+esc(m.trade||'')+'</div></td>';
       days.forEach(function(d){
-        var iso=toISODate(d);
+        var iso=toISODate(d), hol=getHoliday(iso);
         var allItems=(assign[m.name]&&assign[m.name][iso])||[];
         var items = q ? allItems.filter(function(it){ return jobEntryMatches(it,q); }) : allItems;
         var absStatus=getAttendance(iso)[m.name];
         var chips=items.map(function(it){ return '<div class="cal-chip status-'+it.status+'" data-job-edit="'+it.jobId+'">'+(it.project?'<b>'+esc(it.project)+'</b>':'')+esc(it.task)+'</div>'; }).join('');
-        rowHTML+='<td'+(q&&allItems.length&&!items.length?' class="search-miss"':'')+'>'+chips+(absStatus?'<span class="absence-tag '+absStatus+'">'+ABSENCE_LABELS[absStatus]+'</span>':'')+'</td>';
+        var cls=[hol?'holiday-col':'', (q&&allItems.length&&!items.length)?'search-miss':''].filter(Boolean).join(' ');
+        rowHTML+='<td'+(cls?' class="'+cls+'"':'')+'>'+chips+(absStatus?'<span class="absence-tag '+absStatus+'">'+ABSENCE_LABELS[absStatus]+'</span>':'')+'</td>';
       });
       return rowHTML+'</tr>';
     }).join('')+'</tbody>';
@@ -1137,6 +1145,10 @@ var XL_SCHED_STYLES =
  '<Style ss:ID="schNum"><Font ss:Size="10"/><Alignment ss:Vertical="Top" ss:Horizontal="Right"/>'+
    '<Borders><Border ss:Position="Bottom" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#C0C0C0"/><Border ss:Position="Top" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#C0C0C0"/>'+
    '<Border ss:Position="Left" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#C0C0C0"/><Border ss:Position="Right" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#C0C0C0"/></Borders></Style>'+
+ '<Style ss:ID="schHdrHol"><Font ss:Bold="1" ss:Color="#5A3F0E" ss:Size="10"/><Interior ss:Color="#FCE9B8" ss:Pattern="Solid"/>'+
+   '<Alignment ss:Vertical="Center" ss:Horizontal="Center" ss:WrapText="1"/>'+
+   '<Borders><Border ss:Position="Bottom" ss:LineStyle="Continuous" ss:Weight="1"/><Border ss:Position="Top" ss:LineStyle="Continuous" ss:Weight="1"/>'+
+   '<Border ss:Position="Left" ss:LineStyle="Continuous" ss:Weight="1"/><Border ss:Position="Right" ss:LineStyle="Continuous" ss:Weight="1"/></Borders></Style>'+
  '<Style ss:ID="schGroup"><Font ss:Bold="1" ss:Size="12" ss:Color="#16213E"/></Style>'+
  '<Style ss:ID="schTot"><Font ss:Bold="1" ss:Size="10"/><Interior ss:Color="#E6E9F0" ss:Pattern="Solid"/><Alignment ss:Horizontal="Right"/>'+
    '<Borders><Border ss:Position="Bottom" ss:LineStyle="Continuous" ss:Weight="1"/><Border ss:Position="Top" ss:LineStyle="Continuous" ss:Weight="1"/></Borders></Style>'+
@@ -1211,7 +1223,10 @@ function exportMonthCalendarExcel(){
 function printWeeklySchedule(){
   var days=[]; for(var i=0;i<6;i++) days.push(addDaysD(weekCursor,i));
   var team=teamList(), byDate=jobsByDate();
-  var head='<tr><th>Member</th>'+days.map(function(d){ return '<th>'+d.toLocaleDateString('en-GB',{weekday:'short'})+' '+fmtShortD(d)+'</th>'; }).join('')+'</tr>';
+  var head='<tr><th>Member</th>'+days.map(function(d){
+    var hol=getHoliday(toISODate(d));
+    return '<th'+(hol?' style="background:#fdf3d8"':'')+'>'+d.toLocaleDateString('en-GB',{weekday:'short'})+' '+fmtShortD(d)+(hol?'<div class="sd-hol">'+esc(hol)+'</div>':'')+'</th>';
+  }).join('')+'</tr>';
   var body=team.map(function(m){
     return '<tr><td><b>'+esc(m.name)+'</b>'+(m.trade?'<br><span style="color:#666">'+esc(m.trade)+'</span>':'')+'</td>'+
       days.map(function(d){
@@ -1230,7 +1245,10 @@ function printWeeklySchedule(){
 function exportWeeklyScheduleExcel(){
   var days=[]; for(var i=0;i<6;i++) days.push(addDaysD(weekCursor,i));
   var team=teamList(), byDate=jobsByDate();
-  var header=xlRow(['Member','Trade'].concat(days.map(function(d){ return d.toLocaleDateString('en-GB',{weekday:'short'})+' '+fmtShortD(d); })).map(function(h){ return {v:h,s:'schHdr'}; }));
+  var header=xlRow([{v:'Member',s:'schHdr'},{v:'Trade',s:'schHdr'}].concat(days.map(function(d){
+    var iso=toISODate(d), hol=getHoliday(iso), lbl=d.toLocaleDateString('en-GB',{weekday:'short'})+' '+fmtShortD(d);
+    return hol? {v:lbl+'\n'+hol, s:'schHdrHol'} : {v:lbl, s:'schHdr'};
+  })));
   var rows=team.map(function(m){
     var cells=[{v:m.name,s:'schCell'},{v:m.trade||'',s:'schCell'}];
     days.forEach(function(d){
