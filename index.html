@@ -324,6 +324,9 @@ button.btn{padding:8px 16px;border:none;border-radius:6px;cursor:pointer;font-si
 .day-cell:hover{background:#1a2440}
 .day-cell.muted{background:#141b30;color:#555}
 .day-cell.today{box-shadow:inset 0 0 0 1px #e94560}
+.day-cell.holiday{background:#3a2f10}
+.day-cell.holiday .day-num{color:#f5b041}
+.holiday-label{font-size:10px;font-weight:700;color:#f5b041;margin-bottom:3px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .search-miss{opacity:.35}
 .day-num{font-size:12px;font-weight:700;color:#ccd3e0;margin-bottom:4px}
 .day-cell.muted .day-num{color:#3a4260}
@@ -499,9 +502,9 @@ if (FB_ENABLED) {
 /* Every user must sign in and be given a role by an admin. There is no
    anonymous or public read-only mode. */
 var LS_KEY = 'iht_pm_v2';
-var COLS = ['projects','items','documents','photos','claims','folders','users','roster','payments','team','jobs','attendance'];
+var COLS = ['projects','items','documents','photos','claims','folders','users','roster','payments','team','jobs','attendance','holidays'];
 
-var state = { projects:{}, items:{}, documents:{}, photos:{}, claims:{}, folders:{}, users:{}, roster:{}, payments:{}, team:{}, jobs:{}, attendance:{} };
+var state = { projects:{}, items:{}, documents:{}, photos:{}, claims:{}, folders:{}, users:{}, roster:{}, payments:{}, team:{}, jobs:{}, attendance:{}, holidays:{} };
 var currentUser = null;
 var db = null, storage = null, auth = null, functions = null;
 
@@ -678,6 +681,15 @@ function setAttendance(dateISO, name, type){
   if(FB_ENABLED && db){ db.ref(DB_PREFIX+'attendance/'+dateISO).set(day); } else saveLocal();
 }
 
+/* ---------- Public holidays ---------- */
+// holidays are stored as a flat dateISO -> label string; '' / absent means not a holiday
+function getHoliday(dateISO){ return (state.holidays && state.holidays[dateISO]) || ''; }
+function setHoliday(dateISO, label){
+  label=(label||'').trim();
+  if(label){ state.holidays[dateISO]=label; if(FB_ENABLED && db){ db.ref(DB_PREFIX+'holidays/'+dateISO).set(label); } else saveLocal(); }
+  else { delete state.holidays[dateISO]; if(FB_ENABLED && db){ db.ref(DB_PREFIX+'holidays/'+dateISO).remove(); } else saveLocal(); }
+}
+
 /* ---------- Month calendar (home-ish view) ---------- */
 var calMonthCursor = startOfMonthD(new Date());
 var calSearchQuery = '';
@@ -696,7 +708,7 @@ function renderCalendarView(){
         '<input type="search" id="calSearch" placeholder="Search jobs…" value="'+esc(calSearchQuery)+'"> '+
         '<button class="btn btn-secondary btn-sm" data-export-pdf>Export PDF</button> '+
         '<button class="btn btn-secondary btn-sm" data-export-xls>Export Excel</button> '+
-        (canOperate()? '<button class="btn btn-secondary btn-sm" data-mark-attendance>Mark Attendance</button> <button class="btn btn-secondary btn-sm" data-manage-team>Manage Team</button> <button class="btn btn-add btn-sm" data-add-job>+ Add Job</button>' : '')+
+        (canOperate()? '<button class="btn btn-secondary btn-sm" data-mark-attendance>Mark Attendance</button> <button class="btn btn-secondary btn-sm" data-mark-holiday>Mark Holiday</button> <button class="btn btn-secondary btn-sm" data-manage-team>Manage Team</button> <button class="btn btn-add btn-sm" data-add-job>+ Add Job</button>' : '')+
       '</div>'+
     '</div>'+
     '<div class="month-grid" id="calGrid"></div>';
@@ -706,6 +718,7 @@ function renderCalendarView(){
   var mt=el.querySelector('[data-manage-team]'); if(mt) mt.addEventListener('click', openTeamModal);
   var aj=el.querySelector('[data-add-job]'); if(aj) aj.addEventListener('click', function(){ openJobModal(null); });
   var ma=el.querySelector('[data-mark-attendance]'); if(ma) ma.addEventListener('click', function(){ openAttendanceModal(); });
+  var mh=el.querySelector('[data-mark-holiday]'); if(mh) mh.addEventListener('click', function(){ openHolidayModal(); });
   el.querySelector('[data-export-pdf]').addEventListener('click', printMonthCalendar);
   el.querySelector('[data-export-xls]').addEventListener('click', exportMonthCalendarExcel);
   renderCalendarGrid();
@@ -734,8 +747,10 @@ function renderCalendarGrid(){
       var allJobs = byDate[iso]||[];
       var jobs = q ? allJobs.filter(function(j){ return jobEntryMatches(j,q); }) : allJobs;
       var shown = jobs.slice(0,3);
-      weeksHTML+='<div class="day-cell '+(muted?'muted':'')+' '+(iso===todayISO?'today':'')+(q&&allJobs.length&&!jobs.length?' search-miss':'')+'" data-day="'+iso+'">'+
-        '<div class="day-num">'+day.getDate()+'</div>'+
+      var hol = getHoliday(iso);
+      weeksHTML+='<div class="day-cell '+(muted?'muted':'')+' '+(iso===todayISO?'today':'')+(hol?' holiday':'')+(q&&allJobs.length&&!jobs.length?' search-miss':'')+'" data-day="'+iso+'">'+
+        '<div class="day-num">'+day.getDate()+(hol?' <span title="'+esc(hol)+'">🎌</span>':'')+'</div>'+
+        (hol?'<div class="holiday-label" title="'+esc(hol)+'">'+esc(hol)+'</div>':'')+
         shown.map(function(j){ return '<div class="day-chip '+(j.projStatus==='delayed'?'delayed':(j.status==='done'?'done':''))+'" title="'+esc(j.task)+'">'+esc(j.project||j.task)+'</div>'; }).join('')+
         (jobs.length>3? '<div class="day-more">+'+(jobs.length-3)+' more</div>' : '')+
         '</div>';
@@ -764,10 +779,15 @@ function openDayDetailModal(iso){
   }).join('') : '<div class="empty-state" style="padding:20px 0">No jobs scheduled this day.</div>';
 
   var leaveHTML = buildLeaveRowHTML(iso);
+  var holLabel = getHoliday(iso);
 
   openModal(
     '<div class="modal-head"><h2>Jobs — '+d.toLocaleDateString('en-GB',{weekday:'long',day:'2-digit',month:'short',year:'numeric'})+'</h2><button class="modal-close" data-close>&times;</button></div>'+
     '<div class="list-panel">'+listHTML+'</div>'+
+    (canOperate() ? '<div class="leave-section"><label>Public Holiday</label><div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">'+
+        '<label style="display:flex;align-items:center;gap:6px;font-size:13px;color:#ccd3e0;white-space:nowrap"><input type="checkbox" id="dayHolToggle"'+(holLabel?' checked':'')+'> Mark as holiday</label>'+
+        '<input type="text" id="dayHolLabel" placeholder="e.g. Merdeka Day" value="'+esc(holLabel)+'" style="'+(holLabel?'':'display:none;')+'flex:1;min-width:140px;background:#0f3460;border:1px solid #23325a;color:#fff;border-radius:6px;padding:6px 8px;font-size:13px">'+
+      '</div></div>' : '')+
     (canOperate() ? '<div class="leave-section"><label>Absent this day</label><div class="leave-row" id="dayLeaveRow">'+leaveHTML+'</div></div>' : '')+
     '<div class="modal-foot">'+
       (canOperate()? '<button class="btn btn-add" data-add-job-day="'+iso+'">+ Add Job</button>' : '')+
@@ -778,6 +798,17 @@ function openDayDetailModal(iso){
   modalBox.querySelectorAll('[data-job-edit]').forEach(function(row){ row.addEventListener('click', function(){ closeModal(); openJobModal(row.dataset.jobEdit); }); });
   var addBtn=modalBox.querySelector('[data-add-job-day]'); if(addBtn) addBtn.addEventListener('click', function(){ closeModal(); openJobModal(null, iso); });
   bindLeaveRow(document.getElementById('dayLeaveRow'), iso);
+  var dht=document.getElementById('dayHolToggle');
+  if(dht){
+    var dhl=document.getElementById('dayHolLabel');
+    dht.addEventListener('change', function(){
+      dhl.style.display = dht.checked ? '' : 'none';
+      setHoliday(iso, dht.checked ? (dhl.value.trim()||'Public Holiday') : '');
+      renderCurrent();
+      if(dht.checked) dhl.focus();
+    });
+    dhl.addEventListener('change', function(){ if(dht.checked) { setHoliday(iso, dhl.value.trim()||'Public Holiday'); renderCurrent(); } });
+  }
 }
 function buildLeaveRowHTML(iso){
   var att=getAttendance(iso);
@@ -1010,6 +1041,40 @@ function refreshAttendanceRow(){
   bindLeaveRow(row, iso);
 }
 
+/* standalone entry point so a holiday can be ticked for any date, not just one
+   currently visible in the calendar grid — same reasoning as "Mark Attendance"
+   (a per-day toggle also lives in openDayDetailModal for the visible-day case) */
+function openHolidayModal(dateHint){
+  var dateVal = dateHint || todayISO();
+  openModal(
+    '<div class="modal-head"><h2>Mark Holiday</h2><button class="modal-close" data-close>&times;</button></div>'+
+    field('Date','holDate',dateVal,'date',true)+
+    '<div class="field"><label><input type="checkbox" id="holToggle"> This date is a public holiday</label></div>'+
+    '<div class="field" id="holLabelField" style="display:none"><label>Holiday Name</label><input type="text" id="holLabel" placeholder="e.g. Merdeka Day"></div>'+
+    '<div class="modal-foot"><button class="btn btn-secondary" data-close>Close</button></div>'
+  );
+  bindClose();
+  refreshHolidayFields();
+  document.getElementById('holDate').addEventListener('change', refreshHolidayFields);
+  document.getElementById('holToggle').addEventListener('change', function(){
+    document.getElementById('holLabelField').style.display = this.checked ? '' : 'none';
+    commitHolidayFromModal();
+    if(this.checked) document.getElementById('holLabel').focus();
+  });
+  document.getElementById('holLabel').addEventListener('change', commitHolidayFromModal);
+}
+function refreshHolidayFields(){
+  var iso=val('holDate'), lbl=getHoliday(iso);
+  document.getElementById('holToggle').checked = !!lbl;
+  document.getElementById('holLabel').value = lbl;
+  document.getElementById('holLabelField').style.display = lbl ? '' : 'none';
+}
+function commitHolidayFromModal(){
+  var iso=val('holDate'), checked=document.getElementById('holToggle').checked, lbl=val('holLabel').trim();
+  setHoliday(iso, checked ? (lbl||'Public Holiday') : '');
+  renderCurrent();
+}
+
 /* ---------- Calendar / Weekly Schedule exports (PDF via print, Excel via SpreadsheetML) ---------- */
 var SCHEDULE_PRINT_CSS =
  '@page{size:A4 landscape;margin:12mm}'+
@@ -1023,6 +1088,7 @@ var SCHEDULE_PRINT_CSS =
  '.sd-job{margin-bottom:3px}'+
  '.sd-job b{display:block}'+
  '.sd-team{color:#444}'+
+ '.sd-hol{color:#a06a00;font-weight:bold;font-size:9px}'+
  '.sd-abs{font-weight:bold}';
 function scheduleDocHead(title){
   var logo=document.querySelector('.sidebar .logo-img');
@@ -1115,8 +1181,8 @@ function printMonthCalendar(){
     for(var d=0; d<7; d++){
       var day=addDaysD(gridStart, w*7+d), iso=toISODate(day);
       if(day.getMonth()!==month){ rowsHTML+='<td style="background:#f2f2f2"></td>'; continue; }
-      var jobs=byDate[iso]||[];
-      rowsHTML+='<td><b>'+day.getDate()+'</b><br>'+jobs.map(function(j){ return '<div class="sd-job"><b>'+esc(j.project||j.task)+'</b>'+(j.project?esc(j.task):'')+
+      var jobs=byDate[iso]||[]; var hol=getHoliday(iso);
+      rowsHTML+='<td'+(hol?' style="background:#fdf3d8"':'')+'><b>'+day.getDate()+'</b>'+(hol?' <span class="sd-hol">'+esc(hol)+'</span>':'')+'<br>'+jobs.map(function(j){ return '<div class="sd-job"><b>'+esc(j.project||j.task)+'</b>'+(j.project?esc(j.task):'')+
         (j.assignees&&j.assignees.length?'<div class="sd-team">'+esc(j.assignees.join(', '))+'</div>':'')+'</div>'; }).join('')+'</td>';
     }
     rowsHTML+='</tr>';
@@ -1131,14 +1197,15 @@ function exportMonthCalendarExcel(){
   var dates=Object.keys(byDate).filter(function(iso){
     var d=parseISODate(iso); return d.getFullYear()===calMonthCursor.getFullYear() && d.getMonth()===calMonthCursor.getMonth();
   }).sort();
-  var header=xlRow(['Date','Project / Site','Job','Team','Status'].map(function(h){ return {v:h,s:'schHdr'}; }));
+  var header=xlRow(['Date','Holiday','Project / Site','Job','Team','Status'].map(function(h){ return {v:h,s:'schHdr'}; }));
   var rows=[header];
   dates.forEach(function(iso){
+    var hol=getHoliday(iso);
     byDate[iso].forEach(function(j){
-      rows.push(xlRow([{v:iso,s:'schCell'},{v:j.project||'',s:'schCell'},{v:j.task||'',s:'schCell'},{v:(j.assignees||[]).join(', '),s:'schCell'},{v:j.status||'',s:'schCell'}]));
+      rows.push(xlRow([{v:iso,s:'schCell'},{v:hol,s:'schCell'},{v:j.project||'',s:'schCell'},{v:j.task||'',s:'schCell'},{v:(j.assignees||[]).join(', '),s:'schCell'},{v:j.status||'',s:'schCell'}]));
     });
   });
-  downloadXLS('Team Calendar - '+monthLabel, 'Calendar', [75,200,260,180,70], rows);
+  downloadXLS('Team Calendar - '+monthLabel, 'Calendar', [75,110,200,260,180,70], rows);
 }
 
 function printWeeklySchedule(){
