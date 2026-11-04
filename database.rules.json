@@ -1,0 +1,22 @@
+{
+  "rules": {
+    "projectSchedule": { ".read": true, ".write": "auth != null" },
+    "projectUsers": { ".read": "auth != null", ".write": "auth != null" },
+    "pm": {
+      "projects": { ".read": "auth != null", ".write": "auth != null" },
+      "items": { ".read": "auth != null", ".write": "auth != null" },
+      "documents": { ".read": "auth != null", ".write": "auth != null" },
+      "photos": { ".read": "auth != null", ".write": "auth != null" },
+      "claims": { ".read": "auth != null", ".write": "auth != null" },
+      "folders": { ".read": "auth != null", ".write": "auth != null" },
+      "users": { ".read": "auth != null", ".write": "auth != null" },
+      "roster": { ".read": "auth != null", ".write": "auth != null" },
+      "payments": { ".read": "auth != null", ".write": "auth != null" },
+      "team": { ".read": "auth != null", ".write": "auth != null" },
+      "jobs": { ".read": "auth != null", ".write": "auth != null" },
+      "attendance": { ".read": "auth != null", ".write": "auth != null" },
+      "holidays": { ".read": "auth != null", ".write": "auth != null" },
+      "energyCheck": { ".read": "auth != null && root.child('pm/users/' + auth.uid + '/roles/0').exists()", ".write": "auth != null && root.child('pm/users/' + auth.uid + '/roles/0').exists()" }
+    }
+  }
+}

@@ -2,9 +2,16 @@
   "functions": {
     "source": "functions",
     "runtime": "nodejs20",
-    "ignore": ["node_modules", ".git", "*.log"]
+    "ignore": [
+      "node_modules",
+      ".git",
+      "*.log"
+    ]
   },
   "storage": {
     "rules": "storage.rules"
+  },
+  "database": {
+    "rules": "database.rules.json"
   }
 }

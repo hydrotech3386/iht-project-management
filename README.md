@@ -75,8 +75,8 @@ Backend changes need the Firebase CLI:
 ```bash
 npm install firebase-tools --prefix ./tooling
 
-# security rules
-./tooling/node_modules/.bin/firebase deploy --only storage --project iht-project-schedule
+# security rules (these also cover the Energy Check app, under pm/energyCheck)
+./tooling/node_modules/.bin/firebase deploy --only database,storage --project iht-project-schedule
 
 # the extraction function
 ./tooling/node_modules/.bin/firebase deploy --only functions --project iht-project-schedule

@@ -24,6 +24,15 @@ service firebase.storage {
       allow delete: if request.auth != null;
     }
 
+    // Energy Check app: site photos, shared by all signed-in staff.
+    match /pm/energyCheck/{visitId}/{file} {
+      allow read: if request.auth != null;
+      allow create, update: if request.auth != null
+                   && request.resource.size < 25 * 1024 * 1024
+                   && request.resource.contentType.matches('image/.*');
+      allow delete: if request.auth != null;
+    }
+
     // Everything outside pm/ is denied to this app.
     match /{allPaths=**} {
       allow read, write: if false;
